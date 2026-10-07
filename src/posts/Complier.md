@@ -19,10 +19,34 @@ k 代表**每一步只向前看 k 个符号**。
 
 ### 1. $FIRST$ 集合
 
-> 定义：$FIRST(A)=\{a|A\Rightarrow *a...,a\in V_T\}$
+> 定义：符号串 $\boldsymbol{\alpha}$ 的 $FIRST(\alpha)$：由 $\alpha$ 经过**任意次推导**能够推导出的**所有首终结符**构成的集合。
+如果 $\alpha \stackrel{*}{\Rightarrow} \varepsilon$（$\alpha$ 可以推导出空串），则 $\varepsilon \in FIRST(\alpha)$
 
-具体方法：
+#### 计算规则：
+1. 若符号串首符号是**终结符 $a$**：
 
-计算$FIRST(X)$
+$$FIRST(a\beta)=\{a\}$$
 
-    如果 $X$ 为终结符，则$FIRST(X)={X}$
+不含 $\varepsilon$。
+
+2. 若符号串首符号是**非终结符 $A$**：
+
+    把 $FIRST(A)-\{\varepsilon\}$ 全部加入集合
+    - 如果 $A$ **不能推出 $\varepsilon$**：停止。
+    - 如果 $A$ **可以推出 $\varepsilon$**：继续考察后面下一个符号，重复本规则。
+
+3. 如果可以推导出 $\varepsilon$：
+    $\varepsilon \in FIRST(\alpha)$
+
+### 2. $FOLLOW$ 集合
+
+> 定义：$FOLLOW(A)$ 是所有紧跟在非终结符 $A$ 之后出现的终结符的集合
+
+#### 计算规则（以 $A$ 为例） ：
+1. 如果是 $A$ **开始符号**，将 **\$** 加入 $FOLLOW(A)$
+2. 找到所有产生式 $\to$ 右部所有的 $A$，观察其右边紧邻符号的类型：
+    - 为终结符：直接加入 $FOLLOW(A)$；
+    - 为非终结符：依次看其右边的每个非终结符，直到不能推出 $\varepsilon$，将其 $FIRST$ 集合去掉 $\varepsilon$ 加入 $FOLLOW(A)$；如果都能推出空，则符合下一条；
+    - 为空：将 $\to$ 左侧符号的 $FOLLOW$ 集合直接加入 $FOLLOW(A)$
+
+> 反复循环扫描所有产生式，直到一轮扫描结束，$FOLLOW$ 不再增加任何元素，停止
