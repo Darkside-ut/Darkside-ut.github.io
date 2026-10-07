@@ -5,13 +5,13 @@ tags: [编译原理]
 summary: LL(1)文法的两大集合构造方法
 ---
 
-## 一、<span style="color: #e74c3c">L</span><span style="color: #3c6de7">L</span>(k)文法
+## 一、<span style="color: #e74c3c">L</span><span style="color: #4677f4">L</span>(k)文法
 
 自顶向下、预测分析的文法。
 
 <span style="color: #e74c3c">L</span> 代表**从左向右扫描输入串**；
 
-<span style="color: #3c6de7">L</span> 代表**最左推导**；
+<span style="color: #4677f4">L</span> 代表**最左推导**；
 
 k 代表**每一步只向前看 k 个符号**。
 
