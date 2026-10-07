@@ -1,5 +1,4 @@
 <script setup>
-import { computed } from 'vue'
 import { Calendar, Monitor, Iphone, Headset, Mouse, Watch } from '@element-plus/icons-vue'
 import GamepadIcon from '../components/icons/GamepadIcon.vue'
 import TabletIcon from '../components/icons/TabletIcon.vue'
@@ -68,10 +67,9 @@ const devices = [
   },
 ]
 
-// 按购买日期从早到晚排序（date 是 YYYY-MM 格式，字符串排序即时间顺序）
-const sortedDevices = computed(() =>
-  [...devices].sort((a, b) => a.date.localeCompare(b.date))
-)
+// 按购买日期从早到晚排序（date 是 YYYY-MM 格式，字符串排序即时间顺序）。
+// 静态数据直接排序成常量即可，无需 computed。
+const sortedDevices = [...devices].sort((a, b) => a.date.localeCompare(b.date))
 </script>
 
 <template>

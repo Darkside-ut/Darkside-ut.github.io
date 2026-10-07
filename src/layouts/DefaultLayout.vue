@@ -1,5 +1,13 @@
 <script setup>
 import { onMounted } from 'vue'
+import {
+  House,
+  Grid,
+  Notebook,
+  Monitor,
+  Location,
+  Message,
+} from '@element-plus/icons-vue'
 
 // 路由是懒加载的，首次点击导航会先下载对应页面 chunk 才跳转，产生「点击延时」。
 // 这里趁浏览器空闲时把几个页面组件提前下载好，之后点击就是秒开。
