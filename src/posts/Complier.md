@@ -23,20 +23,15 @@ k 代表**每一步只向前看 k 个符号**。
 如果 $\alpha \stackrel{*}{\Rightarrow} \varepsilon$（$\alpha$ 可以推导出空串），则 $\varepsilon \in FIRST(\alpha)$
 
 #### 计算规则：
-1. 若符号串首符号是**终结符 $a$**：
-
-$$FIRST(a\beta)=\{a\}$$
-
-不含 $\varepsilon$。
-
-2. 若符号串首符号是**非终结符 $A$**：
+1. 若符号串首符号是终结符：直接加入
+2. 若符号串首符号是非终结符 $A$
 
     把 $FIRST(A)-\{\varepsilon\}$ 全部加入集合
-    - 如果 $A$ **不能推出 $\varepsilon$**：停止。
-    - 如果 $A$ **可以推出 $\varepsilon$**：继续考察后面下一个符号，重复本规则。
+    - 如果 $A$ **不能推出 $\varepsilon$**：停止
+    - 如果 $A$ **可以推出 $\varepsilon$**：继续考察后面下一个符号，重复本规则
 
 3. 如果可以推导出 $\varepsilon$：
-    $\varepsilon \in FIRST(\alpha)$
+    $\varepsilon$ 直接加入
 
 ### 2. $FOLLOW$ 集合
 
