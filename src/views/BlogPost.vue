@@ -293,22 +293,14 @@ watch(
     inset 0 0 0 1px rgba(23, 35, 61, 0.05);
 }
 
-/* MathJax 公式 */
-.post-content :deep(mjx-container) {
-  display: inline-block;
-  line-height: 0;
-  vertical-align: middle;
-}
-
-/* 块级公式：居中、可横向滚动 */
-.post-content :deep(mjx-container[display='true']) {
+/* KaTeX 块级公式：居中、可横向滚动 */
+.post-content :deep(.katex-display) {
   display: block;
-  text-align: center;
-  margin: 1.2em auto;
+  margin: 1.2em 0;
   padding: 0.4em 0;
+  text-align: center;
   overflow-x: auto;
   overflow-y: hidden;
-  max-width: 100%;
 }
 
 /* Mermaid 图表 */

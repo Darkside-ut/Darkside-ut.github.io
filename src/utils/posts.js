@@ -2,7 +2,8 @@ import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github.css'
 import matter from 'gray-matter'
-import mathjax3 from 'markdown-it-mathjax3'
+import katex from 'katex'
+import 'katex/dist/katex.min.css'
 
 // 读取 src/posts/ 下的所有 .md 文件（构建时同步收集）
 const files = import.meta.glob('../posts/*.md', {
@@ -32,8 +33,129 @@ const md = new MarkdownIt({
   },
 })
 
-// 数学公式：$...$ 行内，$$...$$ 块级（MathJax SVG 输出，不依赖字体度量，角标位置精确）
-md.use(mathjax3)
+// ===== 数学公式：$...$ 行内，$$...$$ 块级（直接调最新 katex，不用老旧的 markdown-it-katex） =====
+
+// 判断 $ 是否能作为公式定界符（避免和金额等普通 $ 冲突）
+function isValidDelim(state, pos) {
+  const max = state.posMax
+  const prevChar = pos > 0 ? state.src.charCodeAt(pos - 1) : -1
+  const nextChar = pos + 1 <= max ? state.src.charCodeAt(pos + 1) : -1
+  let can_open = true
+  let can_close = true
+  if (prevChar === 0x20 /* 空格 */ || prevChar === 0x09 /* 制表符 */ || (nextChar >= 0x30 && nextChar <= 0x39)) {
+    can_close = false
+  }
+  if (nextChar === 0x20 || nextChar === 0x09) {
+    can_open = false
+  }
+  return { can_open, can_close }
+}
+
+// 行内公式：$...$
+function math_inline(state, silent) {
+  if (state.src[state.pos] !== '$') return false
+
+  let res = isValidDelim(state, state.pos)
+  if (!res.can_open) {
+    if (!silent) state.pending += '$'
+    state.pos += 1
+    return true
+  }
+
+  const start = state.pos + 1
+  let match = start
+  while ((match = state.src.indexOf('$', match)) !== -1) {
+    let pos = match - 1
+    while (state.src[pos] === '\\') pos -= 1
+    if ((match - pos) % 2 === 1) break
+    match += 1
+  }
+
+  if (match === -1 || match - start === 0) {
+    if (!silent) state.pending += '$$'.slice(0, match - start === 0 ? 2 : 1)
+    state.pos = match === -1 ? start : start + 1
+    return true
+  }
+
+  res = isValidDelim(state, match)
+  if (!res.can_close) {
+    if (!silent) state.pending += '$'
+    state.pos = start
+    return true
+  }
+
+  if (!silent) {
+    const token = state.push('math_inline', 'math', 0)
+    token.markup = '$'
+    token.content = state.src.slice(start, match)
+  }
+  state.pos = match + 1
+  return true
+}
+
+// 块级公式：$$...$$
+function math_block(state, start, end, silent) {
+  let pos = state.bMarks[start] + state.tShift[start]
+  const max = state.eMarks[start]
+  if (pos + 2 > max) return false
+  if (state.src.slice(pos, pos + 2) !== '$$') return false
+
+  pos += 2
+  let firstLine = state.src.slice(pos, max)
+  if (silent) return true
+
+  let found = false
+  let lastLine = ''
+  let next
+  if (firstLine.trim().slice(-2) === '$$') {
+    firstLine = firstLine.trim().slice(0, -2)
+    found = true
+  }
+  for (next = start; !found; ) {
+    next++
+    if (next >= end) break
+    pos = state.bMarks[next] + state.tShift[next]
+    const maxNext = state.eMarks[next]
+    if (pos < maxNext && state.tShift[next] < state.blkIndent) break
+    if (state.src.slice(pos, maxNext).trim().slice(-2) === '$$') {
+      const lastPos = state.src.slice(0, maxNext).lastIndexOf('$$')
+      lastLine = state.src.slice(pos, lastPos)
+      found = true
+    }
+  }
+
+  state.line = next + 1
+  const token = state.push('math_block', 'math', 0)
+  token.block = true
+  token.content =
+    (firstLine && firstLine.trim() ? firstLine + '\n' : '') +
+    state.getLines(start + 1, next, state.tShift[start], true) +
+    (lastLine && lastLine.trim() ? lastLine : '')
+  token.map = [start, state.line]
+  token.markup = '$$'
+  return true
+}
+
+// 渲染：用最新 katex，纯 HTML 输出（不掺 MathML），报错时兜底显示而非抛异常
+function renderMath(latex, displayMode) {
+  try {
+    return katex.renderToString(latex, {
+      displayMode,
+      throwOnError: false,
+      output: 'html',
+      strict: false,
+    })
+  } catch (e) {
+    return `<span class="katex-error">${md.utils.escapeHtml(latex)}</span>`
+  }
+}
+
+md.inline.ruler.after('escape', 'math_inline', math_inline)
+md.block.ruler.after('blockquote', 'math_block', math_block, {
+  alt: ['paragraph', 'reference', 'blockquote', 'list'],
+})
+md.renderer.rules.math_inline = (tokens, idx) => renderMath(tokens[idx].content, false)
+md.renderer.rules.math_block = (tokens, idx) => renderMath(tokens[idx].content, true)
 
 // 收集标题，生成目录（slug 用递增序号，避免中文/重复问题）
 const defaultHeadingOpen =
