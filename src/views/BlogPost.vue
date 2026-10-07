@@ -2,14 +2,7 @@
 import { computed, onMounted, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ArrowLeft } from '@element-plus/icons-vue'
-import mermaid from 'mermaid'
 import { getPost, renderMarkdown } from '../utils/posts'
-
-mermaid.initialize({
-  startOnLoad: false,
-  theme: 'default',
-  securityLevel: 'loose',
-})
 
 const route = useRoute()
 const post = computed(() => getPost(route.params.slug))
@@ -22,9 +15,27 @@ function scrollTo(slug) {
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
+// mermaid 体积很大（含 elk 布局引擎约 1.5MB），只有文章里真的用到图表时才动态加载
+let mermaidInstance = null
+async function getMermaid() {
+  if (!mermaidInstance) {
+    const { default: mermaid } = await import('mermaid')
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'default',
+      securityLevel: 'loose',
+    })
+    mermaidInstance = mermaid
+  }
+  return mermaidInstance
+}
+
 // 把页面里的 .mermaid 占位节点渲染成真正的图表
 async function renderMermaid() {
   const nodes = document.querySelectorAll('.mermaid')
+  if (nodes.length === 0) return
+
+  const mermaid = await getMermaid()
   for (let i = 0; i < nodes.length; i++) {
     const el = nodes[i]
     const code = (el.textContent || '').trim()

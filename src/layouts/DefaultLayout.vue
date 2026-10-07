@@ -1,4 +1,24 @@
-<script setup></script>
+<script setup>
+import { onMounted } from 'vue'
+
+// 路由是懒加载的，首次点击导航会先下载对应页面 chunk 才跳转，产生「点击延时」。
+// 这里趁浏览器空闲时把几个页面组件提前下载好，之后点击就是秒开。
+const routeComponents = {
+  home: () => import('../views/Home.vue'),
+  portfolio: () => import('../views/Portfolio.vue'),
+  blog: () => import('../views/Blog.vue'),
+  devices: () => import('../views/Devices.vue'),
+}
+
+onMounted(() => {
+  const prefetch = () => Object.values(routeComponents).forEach((load) => load())
+  if ('requestIdleCallback' in window) {
+    requestIdleCallback(prefetch)
+  } else {
+    setTimeout(prefetch, 2000)
+  }
+})
+</script>
 
 <template>
   <div class="layout">
