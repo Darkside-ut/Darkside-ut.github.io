@@ -1,6 +1,6 @@
 import { createApp } from 'vue'
-import ElementPlus from 'element-plus'
-import 'element-plus/dist/index.css'
+// Element Plus 组件和样式由 vite 插件按需引入（见 vite.config.js），这里只补 base 样式（CSS 变量 + reset）
+import 'element-plus/theme-chalk/base.css'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import { Buffer } from 'buffer'
 
@@ -21,6 +21,5 @@ for (const [name, component] of Object.entries(ElementPlusIconsVue)) {
   app.component(name, component)
 }
 
-app.use(ElementPlus)
 app.use(router)
 app.mount('#app')
