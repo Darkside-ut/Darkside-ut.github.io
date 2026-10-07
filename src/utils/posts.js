@@ -2,8 +2,7 @@ import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github.css'
 import matter from 'gray-matter'
-import markdownItKatex from 'markdown-it-katex'
-import 'katex/dist/katex.min.css'
+import mathjax3 from 'markdown-it-mathjax3'
 
 // 读取 src/posts/ 下的所有 .md 文件（构建时同步收集）
 const files = import.meta.glob('../posts/*.md', {
@@ -33,8 +32,8 @@ const md = new MarkdownIt({
   },
 })
 
-// 数学公式：$...$ 行内，$$...$$ 块级
-md.use(markdownItKatex)
+// 数学公式：$...$ 行内，$$...$$ 块级（MathJax SVG 输出，不依赖字体度量，角标位置精确）
+md.use(mathjax3)
 
 // 收集标题，生成目录（slug 用递增序号，避免中文/重复问题）
 const defaultHeadingOpen =

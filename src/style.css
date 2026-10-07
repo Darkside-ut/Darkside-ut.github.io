@@ -21,11 +21,7 @@
   box-sizing: border-box;
 }
 
-/* KaTeX 公式依赖 content-box 做精确布局，全局 border-box 会导致符号错位/重叠，这里重置 */
-.katex,
-.katex * {
-  box-sizing: content-box;
-}
+/* MathJax SVG 公式：SVG 用绝对坐标渲染，不受 box-sizing / 字体度量影响 */
 
 html,
 body,
