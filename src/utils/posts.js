@@ -178,10 +178,22 @@ function math_block(state, start, end, silent) {
   return true
 }
 
+// 去掉 LaTeX 颜色命令（\color / \textcolor / \colorbox / \fcolorbox），让公式统一黑白显示。
+// 例如 \color{red}{x} → x，\textcolor{blue}{A} → A。
+function stripColor(latex) {
+  return latex
+    .replace(/\\fcolorbox\{[^{}]*\}\{[^{}]*\}\{/g, '{')
+    .replace(/\\colorbox\{[^{}]*\}\{/g, '{')
+    .replace(/\\textcolor\{[^{}]*\}\{/g, '{')
+    .replace(/\\color\{[^{}]*\}\{/g, '{')
+    .replace(/\\color\{[^{}]*\}/g, '')
+}
+
 // 渲染：用最新 katex，纯 HTML 输出（不掺 MathML），报错时兜底显示而非抛异常
 function renderMath(latex, displayMode) {
+  const clean = stripColor(latex)
   try {
-    return katex.renderToString(latex, {
+    return katex.renderToString(clean, {
       displayMode,
       throwOnError: false,
       output: 'html',
@@ -189,6 +201,27 @@ function renderMath(latex, displayMode) {
     })
   } catch (e) {
     return `<span class="katex-error">${md.utils.escapeHtml(latex)}</span>`
+  }
+}
+
+// 把 LaTeX 转成纯文本（用于目录标题，避免显示 \Omega 这种原始命令）。
+// 渲染成 HTML 后去掉所有标签和实体，得到可读的 Unicode 符号（\Omega → Ω）。
+function latexToText(latex) {
+  try {
+    return katex
+      .renderToString(stripColor(latex), {
+        throwOnError: false,
+        output: 'html',
+        strict: false,
+      })
+      .replace(/<[^>]*>/g, '')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(n))
+  } catch (e) {
+    return latex
   }
 }
 
@@ -207,15 +240,21 @@ const defaultHeadingOpen =
 md.renderer.rules.heading_open = (tokens, idx, options, env, self) => {
   const level = Number(tokens[idx].tag.slice(1))
   const inline = tokens[idx + 1]
+  // 剥离标题里内联 HTML 的颜色样式，例如 <span style="color: #525151">$Θ$</span>
+  if (inline && inline.children) {
+    for (const c of inline.children) {
+      if (c.type === 'html_inline') {
+        c.content = c.content.replace(/style="[^"]*color[^"]*"/gi, '')
+      }
+    }
+  }
   const text = inline
     ? (inline.children || [])
-        .filter(
-          (c) =>
-            c.type === 'text' ||
-            c.type === 'code_inline' ||
-            c.type === 'math_inline'
-        )
-        .map((c) => c.content || '')
+        .map((c) => {
+          if (c.type === 'text' || c.type === 'code_inline') return c.content || ''
+          if (c.type === 'math_inline') return latexToText(c.content)
+          return ''
+        })
         .join('')
     : ''
   const slug = 'heading-' + (env.toc.length + 1)
@@ -229,11 +268,87 @@ const defaultFence =
   md.renderer.rules.fence ||
   ((tokens, idx, options, env, self) => self.renderToken(tokens, idx, options))
 
+// ===== 伪代码块：```pseudocode / ```algorithm 渲染成带行号 + 关键字高亮的代码块 =====
+// 用法：
+//   ```pseudocode 算法名
+//   @input 输入说明
+//   @output 输出说明
+//   （空一行）
+//   伪代码正文……
+//   （空一行）
+//   @note 注解说明
+//   ```
+function renderPseudocode(code, title) {
+  const esc = md.utils.escapeHtml
+  const lines = code.split('\n')
+  // 去掉结尾换行产生的空行，避免多出一个空行号
+  if (lines.length && lines[lines.length - 1].trim() === '') lines.pop()
+
+  // 拆解元信息（@input / @output / @note）与正文
+  const meta = [] // { type: 'input' | 'output', text }
+  const notes = [] // 注解行
+  const body = [] // 伪代码正文
+  for (const raw of lines) {
+    if (raw.trim() === '') continue // 空行只作分隔，不参与正文行号
+    const m = raw.match(/^@(input|output|note)\s+(.*)$/)
+    if (m) {
+      if (m[1] === 'note') notes.push(m[2])
+      else meta.push({ type: m[1], text: m[2] })
+    } else {
+      body.push(raw)
+    }
+  }
+
+  const parts = []
+
+  // 标题栏：算法名 + 输入 / 输出
+  if (title || meta.length) {
+    const head = []
+    if (title) head.push(`<div class="pc-title">${esc(title)}</div>`)
+    for (const m of meta) {
+      const label = m.type === 'input' ? '输入' : '输出'
+      head.push(
+        `<div class="pc-meta"><span class="pc-meta-label">${label}：</span>${esc(m.text)}</div>`
+      )
+    }
+    parts.push(`<div class="pc-head">${head.join('')}</div>`)
+  }
+
+  // 正文：带行号 + 关键字高亮（先转义，再插 <span>）
+  const kwRe =
+    /\b(if|else|elif|then|for|while|do|return|function|procedure|def|begin|end|repeat|until|foreach|switch|case|break|continue|and|or|not|true|false)\b/g
+  const bodyHtml = body
+    .map((line, i) => {
+      const highlighted = esc(line)
+        .replace(kwRe, '<span class="pc-kw">$1</span>')
+        .replace(/←|→|:=/g, (m) => `<span class="pc-op">${m}</span>`)
+      return `<div class="pc-line"><span class="pc-no">${i + 1}</span><code>${
+        highlighted || '&nbsp;'
+      }</code></div>`
+    })
+    .join('')
+  parts.push(bodyHtml)
+
+  // 注解
+  if (notes.length) {
+    const noteHtml = notes.map((n) => `<div class="pc-note-line">${esc(n)}</div>`).join('')
+    parts.push(`<div class="pc-note">${noteHtml}</div>`)
+  }
+
+  return `<div class="pseudocode">${parts.join('')}</div>`
+}
+
 md.renderer.rules.fence = (tokens, idx, options, env, self) => {
   const token = tokens[idx]
-  const lang = token.info.trim().split(/\s+/)[0]
+  const info = token.info.trim()
+  const sp = info.indexOf(' ')
+  const lang = sp === -1 ? info : info.slice(0, sp)
+  const title = sp === -1 ? '' : info.slice(sp + 1).trim()
   if (lang === 'mermaid') {
     return `<div class="mermaid">${md.utils.escapeHtml(token.content)}</div>`
+  }
+  if (lang === 'pseudocode' || lang === 'algorithm' || lang === 'algo') {
+    return renderPseudocode(token.content, title)
   }
   return defaultFence(tokens, idx, options, env, self)
 }

@@ -217,14 +217,25 @@ watch(
   color: var(--accent);
 }
 
-.toc-level-2 {
+.toc-level-1 {
   padding-left: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-dark);
+}
+.toc-level-2 {
+  padding-left: 1em;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-dark);
 }
 .toc-level-3 {
-  padding-left: 14px;
+  padding-left: 2em;
+  font-size: 0.76rem;
 }
 .toc-level-4 {
-  padding-left: 28px;
+  padding-left: 3em;
+  font-size: 0.7rem;
 }
 
 /* Markdown 正文样式（v-html 内容） */
@@ -302,6 +313,90 @@ watch(
   box-shadow:
     inset 0 2px 6px rgba(23, 35, 61, 0.1),
     inset 0 0 0 1px rgba(23, 35, 61, 0.05);
+}
+
+/* 伪代码块：```pseudocode 渲染的带行号 + 关键字高亮代码 */
+.post-content :deep(.pseudocode) {
+  margin: 1.2em 0;
+  background: #f5f8fc;
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  border-left: 4px solid var(--accent);
+  border-radius: 12px;
+  padding: 0.9em 1.1em;
+  overflow-x: auto;
+}
+
+.post-content :deep(.pc-line) {
+  display: flex;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 0.85rem;
+  line-height: 1.7;
+}
+
+.post-content :deep(.pc-no) {
+  flex-shrink: 0;
+  width: 2em;
+  margin-right: 1em;
+  text-align: right;
+  color: rgba(37, 99, 235, 0.45);
+  user-select: none;
+}
+
+.post-content :deep(.pc-line code) {
+  white-space: pre-wrap;
+  color: var(--text-dark);
+  background: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.post-content :deep(.pc-kw) {
+  color: #7c3aed;
+  font-weight: 700;
+}
+
+.post-content :deep(.pc-op) {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* 伪代码标题栏：算法名 + 输入 / 输出 */
+.post-content :deep(.pc-head) {
+  padding-bottom: 0.7em;
+  margin-bottom: 0.7em;
+  border-bottom: 1px dashed rgba(37, 99, 235, 0.25);
+}
+
+.post-content :deep(.pc-title) {
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: var(--text-dark);
+  margin-bottom: 0.35em;
+}
+
+.post-content :deep(.pc-meta) {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  line-height: 1.7;
+}
+
+.post-content :deep(.pc-meta-label) {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* 伪代码注解区 */
+.post-content :deep(.pc-note) {
+  margin-top: 0.7em;
+  padding-top: 0.7em;
+  border-top: 1px dashed rgba(37, 99, 235, 0.25);
+}
+
+.post-content :deep(.pc-note-line) {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  line-height: 1.7;
 }
 
 /* KaTeX 块级公式：居中、可横向滚动 */
