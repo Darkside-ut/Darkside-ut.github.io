@@ -98,7 +98,7 @@ const filtered = computed(() => {
 }
 
 .tag {
-  cursor: pointer;
+  cursor: url('/cursor/pointer.cur'), pointer;
 }
 
 .post-card {

@@ -232,7 +232,6 @@ onBeforeUnmount(() => {
   font-weight: 500;
   font-size: 0.95rem;
   color: var(--text-dim);
-  cursor: pointer;
   transition: var(--transition);
   border: 1px solid transparent;
 }
@@ -321,7 +320,6 @@ onBeforeUnmount(() => {
   background: rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(8px);
   color: var(--accent);
-  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;

@@ -39,6 +39,32 @@ body {
     sans-serif;
   color: var(--text-dark);
   -webkit-font-smoothing: antialiased;
+  cursor: url('/cursor/default.cur'), default;
+}
+
+/* ========= 自定义光标（public/cursor/） ========= */
+/* 可点击元素：手型 */
+a,
+button,
+[role='button'] {
+  cursor: url('/cursor/pointer.cur'), pointer;
+}
+
+/* 文本输入 / 代码块：I 型（便于选中复制） */
+input,
+textarea,
+[contenteditable='true'],
+pre,
+pre code {
+  cursor: url('/cursor/text.cur'), text;
+}
+
+/* 禁用态：禁止 */
+button:disabled,
+input:disabled,
+textarea:disabled,
+[aria-disabled='true'] {
+  cursor: url('/cursor/not-allowed.cur'), not-allowed;
 }
 
 /* 背景光晕 + 圆点纹理 */
