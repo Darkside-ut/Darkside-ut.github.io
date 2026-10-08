@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import {
   House,
   Grid,
@@ -7,6 +7,7 @@ import {
   Monitor,
   Location,
   Message,
+  Top,
 } from '@element-plus/icons-vue'
 
 // 路由是懒加载的，首次点击导航会先下载对应页面 chunk 才跳转，产生「点击延时」。
@@ -18,13 +19,31 @@ const routeComponents = {
   devices: () => import('../views/Devices.vue'),
 }
 
+// 回到顶部：监听内容区滚动，超过阈值显示按钮
+const contentRef = ref(null)
+const showBackTop = ref(false)
+
+function onScroll() {
+  showBackTop.value = (contentRef.value?.scrollTop || 0) > 300
+}
+
+function scrollToTop() {
+  contentRef.value?.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
 onMounted(() => {
+  contentRef.value?.addEventListener('scroll', onScroll)
+
   const prefetch = () => Object.values(routeComponents).forEach((load) => load())
   if ('requestIdleCallback' in window) {
     requestIdleCallback(prefetch)
   } else {
     setTimeout(prefetch, 2000)
   }
+})
+
+onBeforeUnmount(() => {
+  contentRef.value?.removeEventListener('scroll', onScroll)
 })
 </script>
 
@@ -103,8 +122,17 @@ onMounted(() => {
     </aside>
 
     <!-- 右侧内容区 -->
-    <main class="content">
+    <main class="content" ref="contentRef">
       <router-view />
+      <button
+        class="back-top"
+        :class="{ show: showBackTop }"
+        aria-label="回到顶部"
+        title="回到顶部"
+        @click="scrollToTop"
+      >
+        <el-icon><Top /></el-icon>
+      </button>
     </main>
   </div>
 </template>
@@ -279,6 +307,46 @@ onMounted(() => {
   overflow-y: auto;
   position: relative;
   background: transparent;
+}
+
+/* 回到顶部按钮：固定在内容区右下角，滚动超过阈值时淡入 */
+.back-top {
+  position: fixed;
+  right: 2rem;
+  bottom: 2rem;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(8px);
+  color: var(--accent);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.22);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(8px);
+  transition: 0.3s;
+  z-index: 20;
+}
+
+.back-top.show {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.back-top:hover {
+  background: var(--accent);
+  color: #fff;
+  transform: translateY(-3px);
+}
+
+.back-top .el-icon {
+  font-size: 1.2rem;
 }
 
 .content::-webkit-scrollbar {

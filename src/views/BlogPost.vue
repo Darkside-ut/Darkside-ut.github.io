@@ -183,7 +183,7 @@ watch(
 
 /* 目录 */
 .post-toc {
-  width: 220px;
+  width: 180px;
   flex-shrink: 0;
   position: sticky;
   top: 1rem;
@@ -193,19 +193,31 @@ watch(
   backdrop-filter: blur(8px);
   border: 1px solid rgba(37, 99, 235, 0.12);
   border-radius: 16px;
-  padding: 1rem;
+  padding: 0.8rem;
+}
+
+/* 目录滚动条：与页面滚动条一致的细蓝色圆角样式 */
+.post-toc::-webkit-scrollbar {
+  width: 5px;
+}
+.post-toc::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 10px;
+}
+.post-toc::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .toc-title {
-  font-size: 0.85rem;
+  font-size: 0.78rem;
   font-weight: 700;
   color: var(--text-dark);
-  margin-bottom: 0.6rem;
+  margin-bottom: 0.5rem;
 }
 
 .toc-link {
   display: block;
-  padding: 0.25rem 0;
+  padding: 0.18rem 0;
   font-size: 0.8rem;
   color: var(--text-dim);
   text-decoration: none;
@@ -219,23 +231,23 @@ watch(
 
 .toc-level-1 {
   padding-left: 0;
-  font-size: 0.9rem;
+  font-size: 0.84rem;
   font-weight: 700;
   color: var(--text-dark);
 }
 .toc-level-2 {
   padding-left: 1em;
-  font-size: 0.82rem;
+  font-size: 0.76rem;
   font-weight: 600;
   color: var(--text-dark);
 }
 .toc-level-3 {
   padding-left: 2em;
-  font-size: 0.76rem;
+  font-size: 0.7rem;
 }
 .toc-level-4 {
   padding-left: 3em;
-  font-size: 0.7rem;
+  font-size: 0.65rem;
 }
 
 /* Markdown 正文样式（v-html 内容） */

@@ -178,8 +178,8 @@ function math_block(state, start, end, silent) {
   return true
 }
 
-// 去掉 LaTeX 颜色命令（\color / \textcolor / \colorbox / \fcolorbox），让公式统一黑白显示。
-// 例如 \color{red}{x} → x，\textcolor{blue}{A} → A。
+// 去掉 LaTeX 颜色命令（\color / \textcolor / \colorbox / \fcolorbox），仅用于目录文本转换。
+// 目录里公式只显示纯文本符号、不需要颜色；正文公式仍保留颜色。例如 \color{red}{x} → x。
 function stripColor(latex) {
   return latex
     .replace(/\\fcolorbox\{[^{}]*\}\{[^{}]*\}\{/g, '{')
@@ -191,9 +191,8 @@ function stripColor(latex) {
 
 // 渲染：用最新 katex，纯 HTML 输出（不掺 MathML），报错时兜底显示而非抛异常
 function renderMath(latex, displayMode) {
-  const clean = stripColor(latex)
   try {
-    return katex.renderToString(clean, {
+    return katex.renderToString(latex, {
       displayMode,
       throwOnError: false,
       output: 'html',
@@ -240,14 +239,7 @@ const defaultHeadingOpen =
 md.renderer.rules.heading_open = (tokens, idx, options, env, self) => {
   const level = Number(tokens[idx].tag.slice(1))
   const inline = tokens[idx + 1]
-  // 剥离标题里内联 HTML 的颜色样式，例如 <span style="color: #525151">$Θ$</span>
-  if (inline && inline.children) {
-    for (const c of inline.children) {
-      if (c.type === 'html_inline') {
-        c.content = c.content.replace(/style="[^"]*color[^"]*"/gi, '')
-      }
-    }
-  }
+  // 目录文本：公式用 latexToText 转成可读符号（Ω 而非 \Omega），纯文本、无颜色
   const text = inline
     ? (inline.children || [])
         .map((c) => {
