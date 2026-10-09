@@ -242,29 +242,16 @@ for k = p to r
 $$T(n) = T(n/2) + cn ~~~(c>0)$$
 
 将对应的递归树展开成以下表格：
-$$
-\begin{array}{|c|c|c|c|}
-\hline
-层次k & 子问题个数 & 每个子问题规模 & 每层总代价 \\
-\hline
-0 & 1 = 2^0 & n & cn \\
-\hline
-1 & 2 = 2^1 & n/2 & cn \\
-\hline
-2 & 4 = 2^2 & n/4 & cn \\
-\hline
-3 & 8 = 2^3 & n/8 & cn \\
-\hline
-\vdots & \vdots & \vdots & \vdots \\
-\hline
-k & 2^k & n/2^k & cn \\
-\hline
-\vdots & \vdots & \vdots & \vdots \\
-\hline
-\log_2 n & n & 1 & cn \\
-\hline
-\end{array}
-$$
+| 层次 $k$ | 子问题个数 | 每个子问题规模 | 每层总代价 |
+|:--------:|:----------:|:--------------:|:----------:|
+| $0$ | $1 = 2^0$ | $n$ | $cn$ |
+| $1$ | $2 = 2^1$ | $n/2$ | $cn$ |
+| $2$ | $4 = 2^2$ | $n/4$ | $cn$ |
+| $3$ | $8 = 2^3$ | $n/8$ | $cn$ |
+| $\vdots$ | $\vdots$ | $\vdots$ | $\vdots$ |
+| $k$ | $2^k$ | $n/2^k$ | $cn$ |
+| $\vdots$ | $\vdots$ | $\vdots$ | $\vdots$ |
+| $\log_2 n$ | $n$ | $1$ | $cn$ |
 
 不难得到，总的时间复杂度为：
 $$T(n) = \sum_{k=0}^{\log_2 n} cn = cn \cdot (\log_2 n + 1) = cn\cdot\log_2 n + cn = \Theta(n \log n)$$
