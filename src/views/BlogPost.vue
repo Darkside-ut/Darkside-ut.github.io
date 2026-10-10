@@ -453,6 +453,107 @@ watch(
   background: rgba(37, 99, 235, 0.08);
 }
 
+/* 折叠块：```fold 标题 ... ```，点击标题栏展开/收起 */
+.post-content :deep(.fold) {
+  margin: 1em 0;
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  border-radius: 12px;
+  background: rgba(245, 249, 255, 0.65);
+  backdrop-filter: blur(8px);
+  overflow: hidden;
+  width: fit-content;
+  max-width: 100%;
+}
+
+/* 展开时占满整行 */
+.post-content :deep(.fold.open) {
+  width: 100%;
+}
+
+.post-content :deep(.fold-head) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+  padding: 0.42em 1.1em;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text-dark);
+  background: transparent;
+  border: none;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+.post-content :deep(.fold-head:hover) {
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.post-content :deep(.fold-arrow) {
+  display: none;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  flex-shrink: 0;
+}
+
+/* 展开态：文字靠左，右侧显示 ▾ 箭头 */
+.post-content :deep(.fold.open .fold-head) {
+  justify-content: space-between;
+}
+
+.post-content :deep(.fold.open .fold-arrow) {
+  display: block;
+  transform: rotate(45deg);
+}
+
+/* 收起时正文彻底隐藏（不占宽高），展开时淡入 */
+.post-content :deep(.fold-body) {
+  display: none;
+}
+
+.post-content :deep(.fold.open .fold-body) {
+  display: block;
+  animation: fold-in 0.25s ease;
+}
+
+.post-content :deep(.fold-inner) {
+  padding: 0.2em 1.1em 0.9em;
+  color: var(--text-dark);
+}
+
+@keyframes fold-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 外链按钮：正文里的 http(s) 链接显示为按钮 */
+.post-content :deep(a[href^="http"]) {
+  display: inline-block;
+  padding: 0.4em 1em;
+  margin: 0.1em 0;
+  border-radius: 60px;
+  background: rgba(37, 99, 235, 0.1);
+  border: 1px solid rgba(37, 99, 235, 0.3);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-decoration: none;
+  transition: 0.2s;
+}
+
+.post-content :deep(a[href^="http"]:hover) {
+  background: var(--accent);
+  color: #fff;
+}
+
 /* 手机端：目录移到正文上方 */
 @media (max-width: 800px) {
   .post-layout {

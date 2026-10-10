@@ -255,6 +255,20 @@ md.renderer.rules.heading_open = (tokens, idx, options, env, self) => {
   return defaultHeadingOpen(tokens, idx, options, env, self)
 }
 
+// 外链：新标签打开 + 防钓鱼（站内 # 锚点等内链不受影响）
+const defaultLinkOpen =
+  md.renderer.rules.link_open ||
+  ((tokens, idx, options, env, self) => self.renderToken(tokens, idx, options))
+
+md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+  const href = tokens[idx].attrGet('href') || ''
+  if (/^https?:\/\//.test(href)) {
+    tokens[idx].attrSet('target', '_blank')
+    tokens[idx].attrSet('rel', 'noopener')
+  }
+  return defaultLinkOpen(tokens, idx, options, env, self)
+}
+
 // mermaid 代码块：输出 .mermaid 占位节点，稍后由组件用 mermaid 库渲染成图
 const defaultFence =
   md.renderer.rules.fence ||
@@ -330,6 +344,25 @@ function renderPseudocode(code, title) {
   return `<div class="pseudocode">${parts.join('')}</div>`
 }
 
+// ===== 折叠块：```fold 标题 ... ```，点击标题栏展开/收起 =====
+// 内容递归走 markdown 渲染，所以支持公式、代码高亮、列表等
+function renderFold(content, title) {
+  const esc = md.utils.escapeHtml
+  // 传空 toc：避免内容里出现 # 标题时 env.toc 为 undefined 导致崩溃，也不污染外层目录
+  const bodyHtml = md.render(content, { toc: [] })
+  return (
+    '<div class="fold">' +
+    '<button type="button" class="fold-head" onclick="this.parentElement.classList.toggle(\'open\')">' +
+    '<span>' + esc(title || '展开') + '</span>' +
+    '<span class="fold-arrow"></span>' +
+    '</button>' +
+    '<div class="fold-body">' +
+    '<div class="fold-inner">' + bodyHtml + '</div>' +
+    '</div>' +
+    '</div>'
+  )
+}
+
 md.renderer.rules.fence = (tokens, idx, options, env, self) => {
   const token = tokens[idx]
   const info = token.info.trim()
@@ -341,6 +374,9 @@ md.renderer.rules.fence = (tokens, idx, options, env, self) => {
   }
   if (lang === 'pseudocode' || lang === 'algorithm' || lang === 'algo') {
     return renderPseudocode(token.content, title)
+  }
+  if (lang === 'fold') {
+    return renderFold(token.content, title)
   }
   return defaultFence(tokens, idx, options, env, self)
 }

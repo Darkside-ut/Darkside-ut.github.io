@@ -275,6 +275,9 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 0.6rem;
   margin-top: 0.9rem;
+  /* 圆形图标 border-radius:50% 会裁掉四角命中区，穿透到父容器；这里让父容器
+     也提供指针光标，四角（含右下角）就能正确显示自定义手型皮肤 */
+  cursor: url('/cursor/pointer.cur'), pointer;
 }
 
 .social-icon {
@@ -293,7 +296,7 @@ onBeforeUnmount(() => {
 .social-icon:hover {
   background: var(--accent);
   color: #fff;
-  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
 }
 
 .social-icon .el-icon {
@@ -315,20 +318,32 @@ onBeforeUnmount(() => {
   bottom: 2rem;
   width: 44px;
   height: 44px;
-  border-radius: 50%;
-  border: 1px solid rgba(37, 99, 235, 0.25);
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(8px);
   color: var(--accent);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.22);
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  background: none;
   opacity: 0;
   visibility: hidden;
   transform: translateY(8px);
   transition: 0.3s;
   z-index: 20;
+  /* 按钮本身是正方形（不加 border-radius），全局 button 规则的手型光标
+     就能覆盖整个正方形，四角不会穿透；圆形外观交给 ::before 绘制 */
+}
+
+.back-top::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.22);
+  transition: background 0.3s;
 }
 
 .back-top.show {
@@ -337,14 +352,18 @@ onBeforeUnmount(() => {
   transform: translateY(0);
 }
 
-.back-top:hover {
+.back-top:hover::before {
   background: var(--accent);
+}
+
+.back-top:hover {
   color: #fff;
-  transform: translateY(-3px);
 }
 
 .back-top .el-icon {
   font-size: 1.2rem;
+  position: relative;
+  z-index: 1;
 }
 
 .content::-webkit-scrollbar {
