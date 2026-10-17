@@ -8,6 +8,7 @@ import {
   Location,
   Message,
   Top,
+  Box,
 } from '@element-plus/icons-vue'
 
 // 路由是懒加载的，首次点击导航会先下载对应页面 chunk 才跳转，产生「点击延时」。
@@ -76,6 +77,11 @@ onBeforeUnmount(() => {
         <router-link class="nav-item" to="/devices">
           <el-icon><Monitor /></el-icon>
           <span>我的电子伙伴</span>
+        </router-link>
+
+        <router-link class="nav-item" to="/components">
+          <el-icon><Box /></el-icon>
+          <span>组件</span>
         </router-link>
       </nav>
 

@@ -31,6 +31,21 @@ const routes = [
         name: 'devices',
         component: () => import('../views/Devices.vue'),
       },
+      {
+        path: 'components',
+        name: 'components',
+        component: () => import('../views/Components.vue'),
+      },
+      {
+        path: 'components/mood',
+        name: 'mood',
+        component: () => import('../views/Mood.vue'),
+      },
+      {
+        path: 'components/lvji',
+        name: 'lvji',
+        component: () => import('../views/Lvji.vue'),
+      },
     ],
   },
 ]

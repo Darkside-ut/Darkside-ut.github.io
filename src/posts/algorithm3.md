@@ -226,16 +226,17 @@ A[i + 1] ↔ A[r]             // 主元放到正确位置
 return i + 1                // 返回主元最终下标
 @note 划分
 ```
+随机快速排序
 ```pseudocode Randomized-Partition(A, p, r)
     i = Random(p, r)            // 随机选一个位置
     A[r] ↔ A[i]                 // 换到末尾，复用 Partition
     return Partition(A, p, r)
-
-Randomized-Quicksort(A, p, r)
-    if p < r
-        q = Randomized-Partition(A, p, r)
-        Randomized-Quicksort(A, p, q - 1)
-        Randomized-Quicksort(A, q + 1, r)
+```
+```pseudocode Randomized-Quicksort(A, p, r)
+if p < r
+    q = Randomized-Partition(A, p, r)
+    Randomized-Quicksort(A, p, q - 1)
+    Randomized-Quicksort(A, q + 1, r)
 ```
 **复杂度与性质：**
 ```fold 时间复杂度分析
