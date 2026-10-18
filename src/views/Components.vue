@@ -1,5 +1,5 @@
 <script setup>
-import { Sunny, MapLocation } from '@element-plus/icons-vue'
+import { Sunny, MapLocation, Calendar } from '@element-plus/icons-vue'
 
 // 组件列表：新增组件在这里登记即可，卡片会自动渲染
 const components = [
@@ -16,6 +16,13 @@ const components = [
     path: '/components/lvji',
     icon: MapLocation,
     color: '#c06060',
+  },
+  {
+    name: '日历',
+    desc: '月历日程管理，DDL 倒计时侧栏提醒',
+    path: '/components/calendar',
+    icon: Calendar,
+    color: '#2563eb',
   },
 ]
 </script>

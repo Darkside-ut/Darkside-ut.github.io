@@ -46,6 +46,11 @@ const routes = [
         name: 'lvji',
         component: () => import('../views/Lvji.vue'),
       },
+      {
+        path: 'components/calendar',
+        name: 'calendar',
+        component: () => import('../views/Calendar.vue'),
+      },
     ],
   },
 ]

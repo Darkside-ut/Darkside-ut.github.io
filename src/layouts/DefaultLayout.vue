@@ -10,6 +10,21 @@ import {
   Top,
   Box,
 } from '@element-plus/icons-vue'
+import {
+  useNow,
+  useUpcomingDdl,
+  urgencyColor,
+  formatLeft,
+} from '../composables/useSchedule.js'
+
+// 临近 DDL：侧栏头像旁简略展示（未完成、7 天内、最多 3 条）
+const now = useNow(30000)
+const upcomingDdl = useUpcomingDdl(now, 7, 3)
+
+function ddlTooltip(d) {
+  const [y, m, day] = d.date.split('-').map(Number)
+  return `${d.title} · ${y}-${m}-${day} ${d.time || '23:59'} 截止`
+}
 
 // 路由是懒加载的，首次点击导航会先下载对应页面 chunk 才跳转，产生「点击延时」。
 // 这里趁浏览器空闲时把几个页面组件提前下载好，之后点击就是秒开。
@@ -57,8 +72,26 @@ onBeforeUnmount(() => {
           <span class="avatar-fallback">J</span>
           <img src="/profile.jpg" alt="Jimsss" onerror="this.remove()" />
         </div>
-        <h1 class="brand-name">Jimsss</h1>
-        <div class="tagline">王浩然 USTC:Computer Science</div>
+        <div class="brand-main">
+          <h1 class="brand-name">Jimsss</h1>
+          <div class="tagline">王浩然 USTC:Computer Science</div>
+
+          <!-- 临近 DDL：颜色随紧迫度从黄到红 -->
+          <div v-if="upcomingDdl.length" class="ddl-list">
+            <router-link
+              v-for="d in upcomingDdl"
+              :key="d.id"
+              to="/components/calendar"
+              class="ddl-item"
+              :style="{ '--ddl': urgencyColor(d.left) }"
+              :title="ddlTooltip(d)"
+            >
+              <span class="ddl-dot"></span>
+              <span class="ddl-title">{{ d.title }}</span>
+              <span class="ddl-left">{{ formatLeft(d.left) }}</span>
+            </router-link>
+          </div>
+        </div>
       </div>
 
       <nav class="nav">
@@ -168,21 +201,29 @@ onBeforeUnmount(() => {
 
 /* 头像 + 品牌 */
 .brand {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.8rem;
   text-align: left;
   margin-bottom: 2rem;
   padding-bottom: 1.2rem;
   border-bottom: 1px solid rgba(37, 99, 235, 0.25);
 }
 
+.brand-main {
+  flex: 1;
+  min-width: 0;
+}
+
 .avatar {
   position: relative;
-  width: 76px;
-  height: 76px;
+  flex-shrink: 0;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
   border: 2px solid var(--accent);
   box-shadow: 0 0 15px rgba(37, 99, 235, 0.25);
   background: linear-gradient(135deg, #60a5fa, #2563eb);
-  margin-bottom: 1rem;
   overflow: hidden;
 }
 
@@ -206,7 +247,7 @@ onBeforeUnmount(() => {
 }
 
 .brand-name {
-  font-size: 1.7rem;
+  font-size: 1.4rem;
   font-weight: 800;
   letter-spacing: -0.02em;
   background: linear-gradient(135deg, #1e3a8a, #2563eb);
@@ -216,10 +257,61 @@ onBeforeUnmount(() => {
 }
 
 .tagline {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-family: monospace;
   color: var(--accent);
-  margin-top: 0.3rem;
+  margin-top: 0.2rem;
+  line-height: 1.5;
+}
+
+/* ===== 临近 DDL（头像旁） ===== */
+.ddl-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 0.55rem;
+}
+
+.ddl-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ddl) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ddl) 32%, transparent);
+  font-size: 0.66rem;
+  line-height: 1.4;
+  transition: 0.2s;
+}
+
+.ddl-item:hover {
+  background: color-mix(in srgb, var(--ddl) 22%, transparent);
+  transform: translateX(2px);
+}
+
+.ddl-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ddl);
+  box-shadow: 0 0 6px var(--ddl);
+}
+
+.ddl-title {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-dark);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ddl-left {
+  flex-shrink: 0;
+  font-weight: 700;
+  color: var(--ddl);
 }
 
 /* 导航胶囊 */
@@ -396,7 +488,6 @@ onBeforeUnmount(() => {
     border-bottom: 1px solid var(--glass-edge);
   }
   .brand {
-    display: flex;
     align-items: center;
     gap: 10px;
     margin-bottom: 0;
@@ -406,7 +497,9 @@ onBeforeUnmount(() => {
   .avatar {
     width: 48px;
     height: 48px;
-    margin-bottom: 0;
+  }
+  .ddl-list {
+    display: none;
   }
   .brand-name {
     font-size: 1.2rem;
