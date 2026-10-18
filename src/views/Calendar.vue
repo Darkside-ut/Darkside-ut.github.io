@@ -7,18 +7,47 @@ import {
   removeEvent,
   toggleDone,
   dateKey,
-  eventDateTime,
   msLeft,
   urgencyColor,
   formatLeft,
   useNow,
+  occursOn,
+  isRepeating,
+  isDoneOn,
+  repeatText,
 } from '../composables/useSchedule.js'
+import SelectMenu from '../components/SelectMenu.vue'
 
 const now = useNow(30000)
 const today = ref(new Date())
 const selected = ref(dateKey())
 
-const form = ref({ title: '', time: '', note: '', ddl: true })
+const form = ref({
+  title: '',
+  time: '',
+  note: '',
+  ddl: true,
+  repeat: 'none',
+  interval: 1,
+  until: '',
+})
+
+const repeatOptions = [
+  { value: 'none', label: '不重复' },
+  { value: 'daily', label: '每天' },
+  { value: 'weekly', label: '每周' },
+  { value: 'monthly', label: '每月' },
+]
+
+const intervalUnit = computed(() => {
+  if (form.value.repeat === 'daily') return '天'
+  if (form.value.repeat === 'weekly') return '周'
+  return '个月'
+})
+
+function onRepeatChange() {
+  form.value.interval = 1
+}
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六']
 
@@ -45,17 +74,13 @@ const monthLabel = computed(
   () => `${today.value.getFullYear()} 年 ${today.value.getMonth() + 1} 月`
 )
 
-// 每天的事件（含颜色）
-const eventsByDay = computed(() => {
-  const map = {}
-  for (const e of events.value) {
-    ;(map[e.date] ||= []).push(e)
-  }
-  return map
-})
+// 某一天发生的所有日程（含重复日程的展开）
+function eventsOnDay(key) {
+  return events.value.filter((e) => occursOn(e, key))
+}
 
 const dayEvents = computed(() =>
-  (eventsByDay.value[selected.value] || []).slice().sort((a, b) => {
+  eventsOnDay(selected.value).slice().sort((a, b) => {
     // 有时间的排前面，再按时间
     const ta = a.time || '99:99'
     const tb = b.time || '99:99'
@@ -63,14 +88,22 @@ const dayEvents = computed(() =>
   })
 )
 
-function dotColor(e) {
-  if (e.done) return '#b7c2d6'
+function dotColor(e, key) {
+  if (isDoneOn(e, key)) return '#b7c2d6'
   if (!e.ddl) return '#60a5fa'
   return urgencyColor(msLeft(e, now.value))
 }
 
-function itemColor(e) {
-  return e.ddl && !e.done ? urgencyColor(msLeft(e, now.value)) : 'var(--accent)'
+function itemColor(e, key) {
+  return e.ddl && !isDoneOn(e, key)
+    ? urgencyColor(msLeft(e, now.value))
+    : 'var(--accent)'
+}
+
+function leftText(e) {
+  if (isDoneOn(e, selected.value)) return '已完成'
+  const ms = msLeft(e, now.value)
+  return ms <= 0 ? '已过期' : `剩 ${formatLeft(ms)}`
 }
 
 function prevMonth() {
@@ -105,14 +138,19 @@ function submit() {
     time: form.value.time,
     note: form.value.note.trim(),
     ddl: form.value.ddl,
+    repeat: form.value.repeat,
+    interval: Math.max(1, Number(form.value.interval) || 1),
+    until: form.value.repeat === 'none' ? '' : form.value.until,
   })
-  form.value = { title: '', time: '', note: '', ddl: true }
-}
-
-function leftText(e) {
-  if (e.done) return '已完成'
-  const ms = msLeft(e, now.value)
-  return ms <= 0 ? '已过期' : `剩 ${formatLeft(ms)}`
+  form.value = {
+    title: '',
+    time: '',
+    note: '',
+    ddl: true,
+    repeat: 'none',
+    interval: 1,
+    until: '',
+  }
 }
 
 const selectedLabel = computed(() => {
@@ -173,10 +211,10 @@ const monthStats = computed(() => {
               <span class="cell-day">{{ c.day }}</span>
               <span class="dots">
                 <span
-                  v-for="e in (eventsByDay[c.key] || []).slice(0, 4)"
+                  v-for="e in eventsOnDay(c.key).slice(0, 4)"
                   :key="e.id"
                   class="dot"
-                  :style="{ backgroundColor: dotColor(e) }"
+                  :style="{ backgroundColor: dotColor(e, c.key) }"
                 ></span>
               </span>
             </button>
@@ -196,11 +234,16 @@ const monthStats = computed(() => {
               v-for="e in dayEvents"
               :key="e.id"
               class="event"
-              :class="{ done: e.done }"
-              :style="{ '--ev': itemColor(e) }"
+              :class="{ done: isDoneOn(e, selected) }"
+              :style="{ '--ev': itemColor(e, selected) }"
             >
-              <button class="check" :class="{ on: e.done }" @click="toggleDone(e.id)" aria-label="完成">
-                <el-icon v-if="e.done"><Check /></el-icon>
+              <button
+                class="check"
+                :class="{ on: isDoneOn(e, selected) }"
+                @click="toggleDone(e.id, selected)"
+                aria-label="完成"
+              >
+                <el-icon v-if="isDoneOn(e, selected)"><Check /></el-icon>
               </button>
               <div class="event-body">
                 <div class="event-top">
@@ -210,6 +253,9 @@ const monthStats = computed(() => {
                 <div class="event-meta">
                   <span v-if="e.time" class="time">{{ e.time }}</span>
                   <span v-if="e.ddl" class="badge">DDL</span>
+                  <span v-if="isRepeating(e)" class="rep-badge">
+                    ↻ {{ repeatText(e) }}
+                  </span>
                   <span v-if="e.note" class="note">{{ e.note }}</span>
                 </div>
               </div>
@@ -228,6 +274,33 @@ const monthStats = computed(() => {
                 <input v-model="form.ddl" type="checkbox" />
                 <span>设为 DDL</span>
               </label>
+            </div>
+            <div class="form-row repeat-row">
+              <SelectMenu
+                v-model="form.repeat"
+                :options="repeatOptions"
+                class="repeat-select"
+                @change="onRepeatChange"
+              />
+              <template v-if="form.repeat !== 'none'">
+                <span class="every-label">每</span>
+                <input
+                  v-model.number="form.interval"
+                  class="inp interval-inp"
+                  type="number"
+                  min="1"
+                  max="99"
+                  title="重复间隔"
+                />
+                <span class="unit-label">{{ intervalUnit }}</span>
+              </template>
+              <input
+                v-if="form.repeat !== 'none'"
+                v-model="form.until"
+                class="inp until-input"
+                type="date"
+                title="结束日期（可选）"
+              />
             </div>
             <input v-model="form.note" class="inp" placeholder="备注（可选）" maxlength="60" />
             <button class="add-btn" type="submit" :disabled="!form.title.trim()">
@@ -528,6 +601,15 @@ const monthStats = computed(() => {
   padding: 1px 5px;
 }
 
+.rep-badge {
+  font-size: 0.6rem;
+  padding: 1px 5px;
+  border-radius: 6px;
+  color: var(--accent);
+  background: rgba(37, 99, 235, 0.09);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+}
+
 .note {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -588,6 +670,35 @@ const monthStats = computed(() => {
 
 .time-inp {
   flex: 1;
+}
+
+.repeat-row {
+  flex-wrap: wrap;
+}
+
+.repeat-select {
+  flex: 1;
+  min-width: 90px;
+}
+
+.every-label,
+.unit-label {
+  flex-shrink: 0;
+  font-size: 0.74rem;
+  color: var(--text-dim);
+}
+
+.interval-inp {
+  flex-shrink: 0;
+  width: 54px;
+  padding-left: 0.5rem;
+  padding-right: 0.3rem;
+  text-align: center;
+}
+
+.until-input {
+  flex: 1;
+  min-width: 120px;
 }
 
 .ddl-toggle {

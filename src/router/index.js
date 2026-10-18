@@ -51,6 +51,11 @@ const routes = [
         name: 'calendar',
         component: () => import('../views/Calendar.vue'),
       },
+      {
+        path: 'components/vocab',
+        name: 'vocab',
+        component: () => import('../views/Vocab.vue'),
+      },
     ],
   },
 ]

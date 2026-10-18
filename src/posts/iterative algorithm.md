@@ -5,8 +5,6 @@ tags: [pplab]
 summary: 对于迭代算法程序推演的详细理解
 ---
 
-![Image](https://internal-api-drive-stream.feishu.cn/space/api/box/stream/download/authcode/?code=MWU1ZTgxY2NiNDc1ZDBjOGZhOWViYWY2ZmFjYmU2YWFfYzM0ZjQ0MTNkZjQ4NjQ0MDFkNmZjMzk3MjMyNzNjYzVfSUQ6NzY1OTc4OTUwMzExNjM0ODM5Nl8xNzkxNzk5MDk0OjE3OTE4ODU0OTRfVjM)
-
 当前存在的问题：
 
 1. 存在导线电阻与开关电阻

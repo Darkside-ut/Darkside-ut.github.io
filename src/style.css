@@ -117,6 +117,31 @@ a {
   text-decoration: none;
 }
 
+/* ========= 滚动条：全站统一为细蓝色 ========= */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #1d4ed8;
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) transparent;
+}
+
 /* ========= 内容页共用组件 ========= */
 .page {
   min-height: 100%;
