@@ -1,8 +1,8 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ArrowLeft } from '@element-plus/icons-vue'
-import { getPost, getPosts, renderMarkdown } from '../utils/posts'
+import { ArrowLeft, Printer } from '@element-plus/icons-vue'
+import { getPost, getPosts, renderMarkdown, renderPrintableHtml } from '../utils/posts'
 
 const route = useRoute()
 const post = computed(() => getPost(route.params.slug))
@@ -13,6 +13,30 @@ const rendered = computed(() =>
 function scrollTo(slug) {
   const el = document.getElementById(slug)
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+/* ---------- 导出 / 打印：打开自包含文档并触发打印 ---------- */
+function exportPrint() {
+  if (!post.value) return
+  // 带上页面里已经渲染好的 Mermaid 图表，避免打印稿只剩源码
+  const mermaidHtml = [...document.querySelectorAll('.post-content .mermaid')].map(
+    (el) => el.innerHTML
+  )
+  const doc = renderPrintableHtml(post.value, mermaidHtml)
+  const w = window.open('', '_blank')
+  if (!w) {
+    // 被拦截时退化为直接下载 HTML 文件
+    const blob = new Blob([doc], { type: 'text/html' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `${post.value.slug}.html`
+    a.click()
+    URL.revokeObjectURL(a.href)
+    return
+  }
+  w.document.open()
+  w.document.write(doc)
+  w.document.close()
 }
 
 /* ---------- 相关文章：按共享标签数排序 ---------- */
@@ -143,10 +167,16 @@ watch(
     </div>
 
     <div class="page-card post-page">
-      <router-link to="/blog" class="back">
-        <el-icon><ArrowLeft /></el-icon>
-        <span>返回随笔</span>
-      </router-link>
+      <div class="post-toolbar">
+        <router-link to="/blog" class="back">
+          <el-icon><ArrowLeft /></el-icon>
+          <span>返回随笔</span>
+        </router-link>
+        <button v-if="post" class="print-btn" @click="exportPrint">
+          <el-icon><Printer /></el-icon>
+          <span>导出 / 打印</span>
+        </button>
+      </div>
 
       <template v-if="post">
         <h2 class="post-title">{{ post.title }}</h2>
@@ -218,6 +248,40 @@ watch(
 <style scoped>
 .post-page {
   max-width: 1000px;
+}
+
+.post-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.2rem;
+}
+
+.post-toolbar .back {
+  margin-bottom: 0;
+}
+
+.print-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0.45rem 1rem 0.45rem 0.85rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--accent);
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  border-radius: 60px;
+  transition: 0.25s;
+}
+
+.print-btn:hover {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 6px 16px -6px rgba(37, 99, 235, 0.5);
 }
 
 .back {

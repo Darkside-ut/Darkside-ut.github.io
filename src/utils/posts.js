@@ -46,6 +46,9 @@ hljs.registerLanguage('yml', yaml)
 import matter from 'gray-matter'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
+// 拿到构建后的 CSS 文件 URL，供打印窗口用 <link> 引用，从而正确加载 KaTeX 字体
+import katexCssUrl from 'katex/dist/katex.min.css?url'
+import hljsCssUrl from 'highlight.js/styles/github.css?url'
 
 // 读取 src/posts/ 下的所有 .md 文件（构建时同步收集）
 const files = import.meta.glob('../posts/*.md', {
@@ -440,4 +443,191 @@ export function renderMarkdown(content) {
   const env = { toc: [] }
   const html = md.render(content, env)
   return { html, toc: env.toc }
+}
+
+/* ============================================================
+   打印 / 导出：生成一份自包含、适合打印的 HTML 文档
+   - KaTeX 与 highlight.js 的样式通过 <link> 引用构建产物，
+     从而正确加载数学字体（直接内联 CSS 字符串会导致字体 url 失效）
+   - 正文复用 markdown 渲染结果，折叠块强制展开，复制按钮隐藏
+   ============================================================ */
+
+const PRINT_CSS = `
+  :root { --accent: #2563eb; --text-dark: #1a202c; --text-dim: #5b6b85; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+      "Noto Sans SC", "Segoe UI", Roboto, sans-serif;
+    color: var(--text-dark);
+    line-height: 1.8;
+    background: #fff;
+  }
+  .print-article { max-width: 820px; margin: 0 auto; padding: 40px 28px; }
+
+  .print-title { font-size: 27px; font-weight: 800; line-height: 1.3; margin: 0 0 10px; }
+  .print-meta { font-size: 13px; color: var(--text-dim); margin-bottom: 6px; }
+  .print-meta .tag {
+    display: inline-block; margin-left: 6px; padding: 1px 9px;
+    border: 1px solid #c7d2e4; border-radius: 20px; color: #4a5a73; font-size: 12px;
+  }
+  .print-meta .tag:first-of-type { margin-left: 8px; }
+
+  /* 目录 */
+  .print-toc { margin: 20px 0 26px; padding: 14px 20px; border: 1px solid #e2e8f2;
+    border-radius: 10px; background: #f7f9fc; }
+  .print-toc h2 { font-size: 15px; margin: 0 0 8px; color: var(--text-dark); }
+  .print-toc ol { margin: 0; padding-left: 20px; }
+  .print-toc li { font-size: 13px; line-height: 1.9; }
+  .print-toc li.lvl-2 { padding-left: 14px; }
+  .print-toc li.lvl-3 { padding-left: 28px; }
+  .print-toc li.lvl-4 { padding-left: 42px; }
+  .print-toc a { color: #33415c; text-decoration: none; }
+
+  /* 正文标题 */
+  .print-body h1, .print-body h2, .print-body h3, .print-body h4 {
+    color: var(--text-dark); line-height: 1.3; margin: 1.5em 0 0.5em; break-after: avoid;
+  }
+  .print-body h2 { font-size: 21px; padding-bottom: 5px; border-bottom: 1px solid #d7deea; }
+  .print-body h3 { font-size: 17px; }
+  .print-body h4 { font-size: 15px; }
+  .print-body p { margin: 0.7em 0; }
+  .print-body a { color: var(--accent); text-decoration: none; }
+  .print-body ul, .print-body ol { padding-left: 1.6em; margin: 0.7em 0; }
+  .print-body blockquote { margin: 1em 0; padding: 0.4em 1em; border-left: 4px solid var(--accent);
+    color: var(--text-dim); background: #f4f7fb; }
+  .print-body img { max-width: 100%; border-radius: 6px; }
+  .print-body hr { border: none; border-top: 1px solid #e2e8f2; margin: 1.4em 0; }
+
+  /* 行内代码 */
+  .print-body p code, .print-body li code {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+    font-size: 0.85em; background: #eef2f8; color: #1e40af;
+    padding: 0.12em 0.4em; border-radius: 4px;
+  }
+
+  /* 代码块（renderCodeBlock） */
+  .print-body .code-block { margin: 1.1em 0; border: 1px solid #dbe3f0; border-radius: 8px; overflow: hidden; }
+  .print-body .code-head { display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 12px; background: #f0f4fa; border-bottom: 1px solid #e2e8f2; }
+  .print-body .code-lang { font-family: monospace; font-size: 11px; color: var(--accent); }
+  .print-body .code-copy { display: none; }
+  .print-body pre.hljs { margin: 0; padding: 12px 14px; background: #f7f9fc; overflow-x: auto;
+    font-size: 13px; line-height: 1.6; counter-reset: code-line; }
+  .print-body pre.hljs code { background: none; padding: 0; }
+  .print-body .code-line { display: block; }
+  .print-body .code-line::before { counter-increment: code-line; content: counter(code-line);
+    display: inline-block; width: 2em; margin-right: 1em; text-align: right; color: #a6b4ca; }
+
+  /* 伪代码块 */
+  .print-body .pseudocode { margin: 1.2em 0; border: 1px solid #d7e0ef; border-left: 4px solid var(--accent);
+    border-radius: 8px; padding: 12px 16px; overflow-x: auto; }
+  .print-body .pc-head { padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px dashed #cdd7e6; }
+  .print-body .pc-title { font-weight: 800; font-size: 14px; margin-bottom: 4px; }
+  .print-body .pc-meta { font-size: 12px; color: var(--text-dim); }
+  .print-body .pc-meta-label { color: var(--accent); font-weight: 600; }
+  .print-body .pc-line { display: flex; font-family: 'SFMono-Regular', Consolas, monospace;
+    font-size: 13px; line-height: 1.7; }
+  .print-body .pc-no { flex-shrink: 0; width: 2em; margin-right: 1em; text-align: right;
+    color: #a6b4ca; user-select: none; }
+  .print-body .pc-line code { white-space: pre-wrap; color: var(--text-dark); background: none;
+    padding: 0; font-family: inherit; font-size: inherit; }
+  .print-body .pc-kw { color: #7c3aed; font-weight: 700; }
+  .print-body .pc-op { color: var(--accent); font-weight: 600; }
+  .print-body .pc-note { margin-top: 8px; padding-top: 8px; border-top: 1px dashed #cdd7e6; }
+  .print-body .pc-note-line { font-size: 12px; color: var(--text-dim); }
+
+  /* 折叠块：打印时强制展开，标题保留为标签 */
+  .print-body .fold { margin: 1em 0; border: 1px solid #d7e0ef; border-radius: 8px; width: 100%; }
+  .print-body .fold-head { display: flex; align-items: center; gap: 6px; width: 100%;
+    padding: 7px 14px; font-weight: 700; font-size: 14px; color: var(--text-dark);
+    background: #f0f4fa; border: none; }
+  .print-body .fold-arrow { display: none; }
+  .print-body .fold-body { display: block !important; }
+  .print-body .fold-inner { padding: 4px 14px 12px; }
+
+  /* 表格 */
+  .print-body table { border-collapse: collapse; margin: 1em 0; }
+  .print-body th, .print-body td { border: 1px solid #c9d3e2; padding: 6px 12px; font-size: 13px; }
+  .print-body th { background: #eef2f8; }
+
+  /* KaTeX 块级公式 */
+  .print-body .katex-display { margin: 1.1em 0; padding: 0.2em 0; text-align: center; overflow-x: auto; }
+
+  /* Mermaid 占位（未被渲染时显示原始代码） */
+  .print-body .mermaid { margin: 1.1em 0; padding: 12px; border: 1px dashed #c9d3e2; border-radius: 8px;
+    background: #fafbfd; white-space: pre-wrap; font-family: monospace; font-size: 12px; color: var(--text-dim); }
+  /* 已渲染的图表：居中、去掉占位框 */
+  .print-body .print-mermaid { display: flex; justify-content: center; padding: 0; border: none;
+    background: none; white-space: normal; break-inside: avoid; }
+  .print-body .print-mermaid svg { max-width: 100%; height: auto; }
+
+  @page { margin: 20mm 18mm; }
+`
+
+function absUrl(u) {
+  if (typeof window === 'undefined') return u
+  try {
+    return new URL(u, window.location.href).href
+  } catch {
+    return u
+  }
+}
+
+// 生成一份适合打印 / 另存为 PDF 的完整 HTML 文档字符串
+// mermaidHtml：页面里已渲染好的图表 HTML（SVG），按出现顺序替换掉原始代码占位
+export function renderPrintableHtml(post, mermaidHtml = []) {
+  const { html, toc } = renderMarkdown(post.content)
+  let body = html
+  if (mermaidHtml.length) {
+    let i = 0
+    body = body.replace(/<div class="mermaid">[\s\S]*?<\/div>/g, (m) =>
+      i < mermaidHtml.length ? `<div class="mermaid print-mermaid">${mermaidHtml[i++]}</div>` : m
+    )
+  }
+  const esc = md.utils.escapeHtml
+  const title = esc(post.title || '未命名随笔')
+  const date = esc(post.date || '')
+  const tags = (post.tags || [])
+    .map((t) => `<span class="tag">${esc(t)}</span>`)
+    .join('')
+
+  const tocHtml = toc.length
+    ? `<nav class="print-toc"><h2>目录</h2><ol>${toc
+        .map(
+          (h) =>
+            `<li class="lvl-${h.level}"><a href="#${h.slug}">${esc(h.text)}</a></li>`
+        )
+        .join('')}</ol></nav>`
+    : ''
+
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${title}</title>
+<link rel="stylesheet" href="${absUrl(katexCssUrl)}">
+<link rel="stylesheet" href="${absUrl(hljsCssUrl)}">
+<style>${PRINT_CSS}</style>
+</head>
+<body>
+<article class="print-article">
+  <header>
+    <h1 class="print-title">${title}</h1>
+    <div class="print-meta">${date}${tags ? tags : ''}</div>
+  </header>
+  ${tocHtml}
+  <div class="print-body">${body}</div>
+</article>
+<script>
+window.addEventListener('load', function () {
+  var go = function () { setTimeout(function () { window.print(); }, 200); };
+  if (document.fonts && document.fonts.ready) { document.fonts.ready.then(go); } else { go(); }
+});
+// 打印/取消后关闭这个临时窗口，避免每次导出都留下一个标签页
+if (window.opener) window.addEventListener('afterprint', function () { window.close(); });
+<\/script>
+</body>
+</html>`
 }
