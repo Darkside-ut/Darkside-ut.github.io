@@ -26,8 +26,13 @@ const filtered = computed(() => {
 <template>
   <div class="page">
     <div class="page-card">
-      <h2 class="page-title">随笔</h2>
-      <div class="section-sub">分享思考与笔记</div>
+      <div class="blog-head">
+        <div>
+          <h2 class="page-title">随笔</h2>
+          <div class="section-sub">分享思考与笔记</div>
+        </div>
+        <router-link to="/blog/archive" class="archive-link">归档 →</router-link>
+      </div>
 
       <!-- 搜索 -->
       <el-input
@@ -85,6 +90,31 @@ const filtered = computed(() => {
 </template>
 
 <style scoped>
+.blog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.archive-link {
+  flex-shrink: 0;
+  margin-top: 0.4rem;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.76rem;
+  color: var(--accent);
+  text-decoration: none;
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  border-radius: 20px;
+  transition: 0.2s;
+}
+
+.archive-link:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
 .search-box {
   max-width: 360px;
   margin-bottom: 1rem;

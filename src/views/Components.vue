@@ -1,5 +1,5 @@
 <script setup>
-import { Sunny, MapLocation, Calendar, Reading } from '@element-plus/icons-vue'
+import { Sunny, Calendar, Reading, Timer } from '@element-plus/icons-vue'
 
 // 组件列表：新增组件在这里登记即可，卡片会自动渲染
 const components = [
@@ -9,13 +9,6 @@ const components = [
     path: '/components/mood',
     icon: Sunny,
     color: '#f2a33c',
-  },
-  {
-    name: '旅迹',
-    desc: '交互式中国旅游指南，点选省份探索景点',
-    path: '/components/lvji',
-    icon: MapLocation,
-    color: '#c06060',
   },
   {
     name: '日历',
@@ -29,7 +22,14 @@ const components = [
     desc: '本地词库导入，卡片翻转与间隔重复记忆',
     path: '/components/vocab',
     icon: Reading,
-    color: '#e8a23c',
+    color: '#e15b5b',
+  },
+  {
+    name: '专注中心',
+    desc: '番茄钟、喝水提醒与护眼提醒',
+    path: '/components/focus',
+    icon: Timer,
+    color: '#34a86c',
   },
 ]
 </script>

@@ -1,8 +1,8 @@
 <script setup>
-import { computed, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ArrowLeft } from '@element-plus/icons-vue'
-import { getPost, renderMarkdown } from '../utils/posts'
+import { getPost, getPosts, renderMarkdown } from '../utils/posts'
 
 const route = useRoute()
 const post = computed(() => getPost(route.params.slug))
@@ -13,6 +13,65 @@ const rendered = computed(() =>
 function scrollTo(slug) {
   const el = document.getElementById(slug)
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+/* ---------- 相关文章：按共享标签数排序 ---------- */
+const related = computed(() => {
+  const cur = post.value
+  if (!cur) return []
+  const tags = new Set(cur.tags || [])
+  return getPosts()
+    .filter((p) => p.slug !== cur.slug)
+    .map((p) => ({
+      post: p,
+      score: (p.tags || []).filter((t) => tags.has(t)).length,
+    }))
+    .sort((a, b) => b.score - a.score || String(b.post.date).localeCompare(String(a.post.date)))
+    .slice(0, 3)
+    .map((x) => x.post)
+})
+
+/* ---------- 阅读进度条 ---------- */
+const progress = ref(0)
+let scrollEl = null
+
+function onScroll() {
+  if (!scrollEl) return
+  const max = scrollEl.scrollHeight - scrollEl.clientHeight
+  progress.value = max > 0 ? Math.min(100, (scrollEl.scrollTop / max) * 100) : 0
+}
+
+/* ---------- 代码复制 / 图片灯箱 ---------- */
+const articleRef = ref(null)
+const lightboxSrc = ref('')
+
+async function copyCode(btn) {
+  const code = btn.closest('.code-block')?.querySelector('pre code')
+  if (!code) return
+  try {
+    await navigator.clipboard.writeText(code.innerText)
+    btn.textContent = '已复制'
+    setTimeout(() => (btn.textContent = '复制'), 1500)
+  } catch {
+    btn.textContent = '复制失败'
+    setTimeout(() => (btn.textContent = '复制'), 1500)
+  }
+}
+
+function onArticleClick(e) {
+  const copy = e.target.closest('.code-copy')
+  if (copy) {
+    copyCode(copy)
+    return
+  }
+  const img = e.target.closest('img')
+  if (img && articleRef.value?.contains(img)) {
+    lightboxSrc.value = img.src
+  }
+}
+
+function onKeydown(e) {
+  if (e.key === 'Escape') lightboxSrc.value = ''
 }
 
 // mermaid 体积很大（含 elk 布局引擎约 1.5MB），只有文章里真的用到图表时才动态加载
@@ -52,20 +111,37 @@ async function renderMermaid() {
 onMounted(async () => {
   await nextTick()
   renderMermaid()
+  scrollEl = document.querySelector('.content')
+  scrollEl?.addEventListener('scroll', onScroll)
+  window.addEventListener('keydown', onKeydown)
+  onScroll()
+})
+
+onBeforeUnmount(() => {
+  scrollEl?.removeEventListener('scroll', onScroll)
+  window.removeEventListener('keydown', onKeydown)
 })
 
 // 同一篇文章组件被复用时（切换 slug），重新渲染
 watch(
   () => route.params.slug,
   async () => {
+    lightboxSrc.value = ''
     await nextTick()
     renderMermaid()
+    scrollEl?.scrollTo({ top: 0 })
+    onScroll()
   }
 )
 </script>
 
 <template>
   <div class="page">
+    <!-- 阅读进度条 -->
+    <div class="read-progress">
+      <span :style="{ width: progress + '%' }"></span>
+    </div>
+
     <div class="page-card post-page">
       <router-link to="/blog" class="back">
         <el-icon><ArrowLeft /></el-icon>
@@ -88,7 +164,12 @@ watch(
         </div>
 
         <div class="post-layout">
-          <article class="post-content" v-html="rendered.html"></article>
+          <article
+            ref="articleRef"
+            class="post-content"
+            v-html="rendered.html"
+            @click="onArticleClick"
+          ></article>
 
           <aside v-if="rendered.toc.length" class="post-toc">
             <div class="toc-title">目录</div>
@@ -104,10 +185,33 @@ watch(
             </a>
           </aside>
         </div>
+
+        <!-- 相关文章 -->
+        <section v-if="related.length" class="related">
+          <h3 class="related-title">相关随笔</h3>
+          <div class="related-list">
+            <router-link
+              v-for="p in related"
+              :key="p.slug"
+              :to="'/blog/' + p.slug"
+              class="related-item"
+            >
+              <span class="related-date">{{ p.date }}</span>
+              <span class="related-name">{{ p.title }}</span>
+            </router-link>
+          </div>
+        </section>
       </template>
 
       <el-empty v-else description="随笔不存在" />
     </div>
+
+    <!-- 图片灯箱 -->
+    <teleport to="body">
+      <div v-if="lightboxSrc" class="lightbox" @click="lightboxSrc = ''">
+        <img :src="lightboxSrc" alt="" @click.stop />
+      </div>
+    </teleport>
   </div>
 </template>
 
@@ -554,6 +658,173 @@ watch(
   color: #fff;
 }
 
+/* ===== 阅读进度条 ===== */
+.read-progress {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: 3px;
+  margin: -2rem -2.2rem 1.8rem;
+  background: rgba(37, 99, 235, 0.08);
+  overflow: hidden;
+}
+
+.read-progress span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #60a5fa, #2563eb);
+  transition: width 0.1s linear;
+}
+
+/* ===== 代码块：语言标签 + 复制 + 行号 ===== */
+.post-content :deep(.code-block) {
+  margin: 1.2em 0;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  background: #eef2f8;
+}
+
+.post-content :deep(.code-head) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.35em 0.9em;
+  background: rgba(37, 99, 235, 0.07);
+  border-bottom: 1px solid rgba(37, 99, 235, 0.1);
+}
+
+.post-content :deep(.code-lang) {
+  font-family: monospace;
+  font-size: 0.7rem;
+  color: var(--accent);
+  text-transform: lowercase;
+}
+
+.post-content :deep(.code-copy) {
+  font-family: inherit;
+  font-size: 0.68rem;
+  padding: 0.15em 0.65em;
+  color: var(--accent);
+  background: #fff;
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  border-radius: 6px;
+  transition: 0.2s;
+}
+
+.post-content :deep(.code-copy:hover) {
+  background: var(--accent);
+  color: #fff;
+}
+
+.post-content :deep(.code-block pre.hljs) {
+  margin: 0;
+  padding: 0.9em 1.1em;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  counter-reset: code-line;
+}
+
+.post-content :deep(.code-line) {
+  display: block;
+}
+
+.post-content :deep(.code-line)::before {
+  counter-increment: code-line;
+  content: counter(code-line);
+  display: inline-block;
+  width: 2em;
+  margin-right: 1em;
+  text-align: right;
+  color: rgba(37, 99, 235, 0.32);
+  user-select: none;
+}
+
+/* ===== 相关文章 ===== */
+.related {
+  margin-top: 2rem;
+  padding-top: 1.2rem;
+  border-top: 1px dashed rgba(37, 99, 235, 0.2);
+}
+
+.related-title {
+  font-size: 0.9rem;
+  color: var(--text-dark);
+  margin-bottom: 0.7rem;
+}
+
+.related-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.related-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.8rem;
+  padding: 0.5rem 0.8rem;
+  border-radius: 10px;
+  text-decoration: none;
+  background: rgba(245, 249, 255, 0.7);
+  border: 1px solid rgba(37, 99, 235, 0.1);
+  transition: 0.2s;
+}
+
+.related-item:hover {
+  border-color: var(--accent);
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.related-date {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-family: monospace;
+  color: var(--text-dim);
+}
+
+.related-name {
+  font-size: 0.82rem;
+  color: var(--text-dark);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ===== 图片灯箱 ===== */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4vh 4vw;
+  background: rgba(10, 20, 40, 0.82);
+  backdrop-filter: blur(6px);
+  cursor: zoom-out;
+  animation: lightbox-in 0.2s ease;
+}
+
+.lightbox img {
+  max-width: 100%;
+  max-height: 92vh;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  cursor: default;
+}
+
+@keyframes lightbox-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 /* 手机端：目录移到正文上方 */
 @media (max-width: 800px) {
   .post-layout {
@@ -564,6 +835,9 @@ watch(
     position: static;
     max-height: none;
     order: -1;
+  }
+  .read-progress {
+    margin: -1rem -1rem 1rem;
   }
 }
 </style>

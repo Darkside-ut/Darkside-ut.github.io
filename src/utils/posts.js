@@ -269,11 +269,6 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
   return defaultLinkOpen(tokens, idx, options, env, self)
 }
 
-// mermaid 代码块：输出 .mermaid 占位节点，稍后由组件用 mermaid 库渲染成图
-const defaultFence =
-  md.renderer.rules.fence ||
-  ((tokens, idx, options, env, self) => self.renderToken(tokens, idx, options))
-
 // ===== 伪代码块：```pseudocode / ```algorithm 渲染成带行号 + 关键字高亮的代码块 =====
 // 用法：
 //   ```pseudocode 算法名
@@ -363,6 +358,34 @@ function renderFold(content, title) {
   )
 }
 
+// 普通代码块：语言标签 + 复制按钮 + 行号
+function renderCodeBlock(code, lang) {
+  const esc = md.utils.escapeHtml
+  let highlighted
+  if (lang && hljs.getLanguage(lang)) {
+    try {
+      highlighted = hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
+    } catch {
+      highlighted = esc(code)
+    }
+  } else {
+    highlighted = esc(code)
+  }
+  const lines = highlighted.replace(/\n$/, '').split('\n')
+  const body = lines
+    .map((line) => `<span class="code-line">${line || ' '}</span>`)
+    .join('')
+  return (
+    '<div class="code-block">' +
+    '<div class="code-head">' +
+    `<span class="code-lang">${esc(lang || 'text')}</span>` +
+    '<button type="button" class="code-copy">复制</button>' +
+    '</div>' +
+    `<pre class="hljs"><code>${body}</code></pre>` +
+    '</div>'
+  )
+}
+
 md.renderer.rules.fence = (tokens, idx, options, env, self) => {
   const token = tokens[idx]
   const info = token.info.trim()
@@ -378,7 +401,7 @@ md.renderer.rules.fence = (tokens, idx, options, env, self) => {
   if (lang === 'fold') {
     return renderFold(token.content, title)
   }
-  return defaultFence(tokens, idx, options, env, self)
+  return renderCodeBlock(token.content, lang)
 }
 
 // 解析所有文章

@@ -22,6 +22,11 @@ const routes = [
         component: () => import('../views/Blog.vue'),
       },
       {
+        path: 'blog/archive',
+        name: 'blog-archive',
+        component: () => import('../views/BlogArchive.vue'),
+      },
+      {
         path: 'blog/:slug',
         name: 'blog-post',
         component: () => import('../views/BlogPost.vue'),
@@ -42,11 +47,6 @@ const routes = [
         component: () => import('../views/Mood.vue'),
       },
       {
-        path: 'components/lvji',
-        name: 'lvji',
-        component: () => import('../views/Lvji.vue'),
-      },
-      {
         path: 'components/calendar',
         name: 'calendar',
         component: () => import('../views/Calendar.vue'),
@@ -55,6 +55,11 @@ const routes = [
         path: 'components/vocab',
         name: 'vocab',
         component: () => import('../views/Vocab.vue'),
+      },
+      {
+        path: 'components/focus',
+        name: 'focus',
+        component: () => import('../views/Focus.vue'),
       },
     ],
   },

@@ -16,6 +16,7 @@ import {
   urgencyColor,
   formatLeft,
 } from '../composables/useSchedule.js'
+import { alerts, dismissAlert } from '../composables/useFocus.js'
 
 // 临近 DDL：侧栏头像旁简略展示（未完成、7 天内、最多 3 条）
 const now = useNow(30000)
@@ -173,6 +174,20 @@ onBeforeUnmount(() => {
         <el-icon><Top /></el-icon>
       </button>
     </main>
+
+    <!-- 专注中心 / 提醒的页内通知 -->
+    <transition-group name="toast" tag="div" class="toast-host">
+      <div
+        v-for="a in alerts"
+        :key="a.id"
+        class="toast"
+        @click="dismissAlert(a.id)"
+        role="status"
+      >
+        <div class="toast-title">{{ a.title }}</div>
+        <div class="toast-body">{{ a.body }}</div>
+      </div>
+    </transition-group>
   </div>
 </template>
 
@@ -462,6 +477,55 @@ onBeforeUnmount(() => {
   font-size: 1.2rem;
   position: relative;
   z-index: 1;
+}
+
+/* ===== 页内提醒 toast ===== */
+.toast-host {
+  position: fixed;
+  top: 1.2rem;
+  right: 1.2rem;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: min(320px, calc(100vw - 2.4rem));
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  padding: 0.7rem 0.9rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  border-left: 4px solid var(--accent);
+  box-shadow: 0 14px 32px -14px rgba(30, 60, 110, 0.4);
+  backdrop-filter: blur(10px);
+  cursor: url('/cursor/pointer.cur'), pointer;
+}
+
+.toast-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-dark);
+}
+
+.toast-body {
+  margin-top: 2px;
+  font-size: 0.72rem;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+
+.toast-enter-active,
+.toast-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateX(16px);
 }
 
 .content::-webkit-scrollbar {
