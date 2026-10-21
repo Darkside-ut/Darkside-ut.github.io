@@ -482,6 +482,8 @@ const PRINT_CSS = `
   .print-toc li.lvl-2 { padding-left: 14px; }
   .print-toc li.lvl-3 { padding-left: 28px; }
   .print-toc li.lvl-4 { padding-left: 42px; }
+  .print-toc li.lvl-5 { padding-left: 56px; font-size: 12px; }
+  .print-toc li.lvl-6 { padding-left: 70px; font-size: 12px; color: #7a879c; }
   .print-toc a { color: #33415c; text-decoration: none; }
 
   /* 正文标题 */

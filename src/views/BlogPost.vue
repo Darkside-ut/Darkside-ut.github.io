@@ -417,6 +417,16 @@ watch(
   padding-left: 3em;
   font-size: 0.65rem;
 }
+.toc-level-5 {
+  padding-left: 4em;
+  font-size: 0.62rem;
+  color: #8d9bb5;
+}
+.toc-level-6 {
+  padding-left: 5em;
+  font-size: 0.6rem;
+  color: #9aa8c0;
+}
 
 /* Markdown 正文样式（v-html 内容） */
 .post-content :deep(h1),
