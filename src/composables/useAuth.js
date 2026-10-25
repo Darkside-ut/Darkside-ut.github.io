@@ -12,6 +12,17 @@ export const authUser = ref(null)
 export const authReady = ref(!isRemote)
 export const isLoggedIn = computed(() => !!authUser.value)
 
+// 管理员邮箱（用于前端隐藏编辑入口，真正的权限由数据库 RLS 控制）
+const OWNER_EMAIL = (import.meta.env.VITE_OWNER_EMAIL || '').trim().toLowerCase()
+
+export const isOwner = computed(() => {
+  if (!isRemote) return true
+  if (!authUser.value) return false
+  // 没配置管理员邮箱时，退回“登录即可编辑”（与升级前的行为一致）
+  if (!OWNER_EMAIL) return true
+  return String(authUser.value.email || '').toLowerCase() === OWNER_EMAIL
+})
+
 let authInited = false
 
 export function initAuth() {

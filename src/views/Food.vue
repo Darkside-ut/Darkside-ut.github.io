@@ -20,11 +20,11 @@ import {
   updateDish,
   updateShop,
 } from '../composables/useFood.js'
-import { isLoggedIn, remoteEnabled } from '../composables/useAuth.js'
+import { isOwner, remoteEnabled } from '../composables/useAuth.js'
 
 /* ---------------- 权限 / 登录 ---------------- */
-// 本地模式始终可编辑；云端模式需要登录（登录入口在左侧栏，全站共用）
-const canEdit = computed(() => !remoteEnabled || isLoggedIn.value)
+// 本地模式始终可编辑；云端模式只有管理员邮箱可编辑（访客登录后只读）
+const canEdit = computed(() => !remoteEnabled || isOwner.value)
 
 /* ---------------- 旧本地数据导入 ---------------- */
 const localCount = ref(localShopCount())
@@ -508,8 +508,10 @@ function starsText(rating) {
         </label>
       </div>
       <template #footer>
-        <button class="ghost-btn" @click="shopDialog = false">取消</button>
-        <button class="primary-btn" @click="saveShop">保存</button>
+        <div class="dialog-footer">
+          <button class="ghost-btn" @click="shopDialog = false">取消</button>
+          <button class="primary-btn" @click="saveShop">保存</button>
+        </div>
       </template>
     </el-dialog>
 
@@ -550,8 +552,10 @@ function starsText(rating) {
         </label>
       </div>
       <template #footer>
-        <button class="ghost-btn" @click="dishDialog = false">取消</button>
-        <button class="primary-btn" @click="saveDish">保存</button>
+        <div class="dialog-footer">
+          <button class="ghost-btn" @click="dishDialog = false">取消</button>
+          <button class="primary-btn" @click="saveDish">保存</button>
+        </div>
       </template>
     </el-dialog>
   </div>
@@ -1069,6 +1073,13 @@ function starsText(rating) {
   display: flex;
   align-items: center;
   min-height: 32px;
+}
+
+/* ===== 弹窗底部按钮 ===== */
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.7rem;
 }
 
 /* ===== 按钮 ===== */
