@@ -9,19 +9,20 @@ import {
   authUser,
   dishCount,
   formatDay,
+  importLocalData,
   initFood,
   loading,
+  localShopCount,
   remoteEnabled,
   removeDish,
   removeShop,
-  sendLoginCode,
   shopRating,
   shops,
+  signInWithPassword,
   signOut,
   totals,
   updateDish,
   updateShop,
-  verifyLoginCode,
 } from '../composables/useFood.js'
 
 /* ---------------- 权限 / 登录 ---------------- */
@@ -31,44 +32,29 @@ const isLoggedIn = computed(() => !!authUser.value)
 
 const loginDialog = ref(false)
 const loginEmail = ref('')
-const loginCode = ref('')
-const codeSent = ref(false)
+const loginPassword = ref('')
 const sending = ref(false)
 
 function openLogin() {
   loginEmail.value = authUser.value?.email || ''
-  loginCode.value = ''
-  codeSent.value = false
+  loginPassword.value = ''
   loginDialog.value = true
 }
 
-async function doSendCode() {
+async function doLogin() {
   const email = loginEmail.value.trim()
+  const password = loginPassword.value
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     ElMessage.warning('请输入有效的邮箱')
     return
   }
-  sending.value = true
-  try {
-    await sendLoginCode(email)
-    codeSent.value = true
-    ElMessage.success('验证码已发送，请查收邮箱')
-  } catch (e) {
-    ElMessage.error(loginErrorText(e))
-  } finally {
-    sending.value = false
-  }
-}
-
-async function doVerify() {
-  const token = loginCode.value.trim()
-  if (!token) {
-    ElMessage.warning('请输入验证码')
+  if (!password) {
+    ElMessage.warning('请输入密码')
     return
   }
   sending.value = true
   try {
-    await verifyLoginCode(loginEmail.value.trim(), token)
+    await signInWithPassword(email, password)
     loginDialog.value = false
     ElMessage.success('登录成功，现在可以编辑了')
   } catch (e) {
@@ -87,11 +73,30 @@ async function doSignOut() {
   }
 }
 
+/* ---------------- 旧本地数据导入 ---------------- */
+const localCount = ref(localShopCount())
+const importing = ref(false)
+
+async function doImportLocal() {
+  importing.value = true
+  try {
+    const n = await importLocalData()
+    localCount.value = 0
+    ElMessage.success(`已导入 ${n} 家店铺到云端`)
+  } catch (e) {
+    ElMessage.error('导入失败：' + (e?.message || e))
+  } finally {
+    importing.value = false
+  }
+}
+
 function loginErrorText(e) {
   const msg = String(e?.message || e || '未知错误')
-  if (/signups not allowed/i.test(msg)) return '该邮箱尚未创建账号，请先在 Supabase 后台添加用户'
-  if (/rate limit/i.test(msg)) return '发送太频繁，请稍后再试'
-  if (/invalid.*token|expired/i.test(msg)) return '验证码无效或已过期'
+  if (/invalid login credentials/i.test(msg)) return '邮箱或密码不正确'
+  if (/email not confirmed/i.test(msg)) {
+    return '邮箱尚未验证，请在 Supabase → Authentication → Users 中确认该用户'
+  }
+  if (/rate limit/i.test(msg)) return '尝试太频繁，请稍后再试'
   return msg
 }
 
@@ -399,6 +404,13 @@ function starsText(rating) {
           只读模式 · 登录后可以编辑
         </div>
 
+        <div v-if="canEdit && localCount > 0" class="import-hint">
+          <span>检测到本机有 {{ localCount }} 家旧店铺数据（切换云端前保存的）</span>
+          <button class="ghost-btn small" :disabled="importing" @click="doImportLocal">
+            {{ importing ? '导入中…' : '导入到云端' }}
+          </button>
+        </div>
+
         <div class="food-stats">
           <span><b>{{ totals.shops }}</b> 家店铺</span>
           <span class="dot">·</span>
@@ -533,36 +545,27 @@ function starsText(rating) {
     <!-- ===================== 登录弹窗 ===================== -->
     <el-dialog v-model="loginDialog" title="登录后编辑" width="400px" align-center>
       <div class="login-box">
-        <p class="login-tip">
-          {{
-            codeSent
-              ? '验证码已发送到 ' + loginEmail + '，10 分钟内有效。'
-              : '输入你的邮箱，我们会发送一封带 6 位验证码的邮件。'
-          }}
-        </p>
+        <p class="login-tip">使用在 Supabase 后台创建的管理员账号登录。</p>
         <el-input
-          v-if="!codeSent"
           v-model="loginEmail"
-          placeholder="you@example.com"
-          @keyup.enter="doSendCode"
+          placeholder="邮箱"
+          autocomplete="username"
+          @keyup.enter="doLogin"
         />
-        <template v-else>
-          <el-input
-            v-model="loginCode"
-            placeholder="6 位验证码"
-            maxlength="10"
-            @keyup.enter="doVerify"
-          />
-          <button class="link-btn" @click="doSendCode">重新发送</button>
-        </template>
+        <el-input
+          v-model="loginPassword"
+          type="password"
+          show-password
+          placeholder="密码"
+          autocomplete="current-password"
+          @keyup.enter="doLogin"
+        />
+        <p class="login-hint">忘记密码可在 Supabase → Authentication → Users 中重置。</p>
       </div>
       <template #footer>
         <button class="ghost-btn" @click="loginDialog = false">取消</button>
-        <button v-if="!codeSent" class="primary-btn" :disabled="sending" @click="doSendCode">
-          {{ sending ? '发送中…' : '发送验证码' }}
-        </button>
-        <button v-else class="primary-btn" :disabled="sending" @click="doVerify">
-          {{ sending ? '验证中…' : '登录' }}
+        <button class="primary-btn" :disabled="sending" @click="doLogin">
+          {{ sending ? '登录中…' : '登录' }}
         </button>
       </template>
     </el-dialog>
@@ -688,6 +691,25 @@ function starsText(rating) {
   font-size: 0.7rem;
 }
 
+.import-hint {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: -0.4rem 0 1rem;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.7rem;
+  color: #8a5a2b;
+  background: rgba(217, 119, 6, 0.08);
+  border: 1px dashed rgba(217, 119, 6, 0.35);
+  border-radius: 10px;
+}
+
+.import-hint .ghost-btn.small {
+  padding: 0.28rem 0.7rem;
+  font-size: 0.68rem;
+}
+
 .loading-tip {
   padding: 2.5rem 0;
   text-align: center;
@@ -708,18 +730,9 @@ function starsText(rating) {
   color: var(--text-dim);
 }
 
-.link-btn {
-  align-self: flex-start;
-  padding: 0;
-  font-family: inherit;
-  font-size: 0.7rem;
-  color: var(--accent);
-  background: none;
-  border: none;
-}
-
-.link-btn:hover {
-  text-decoration: underline;
+.login-hint {
+  font-size: 0.66rem;
+  color: #8d9bb5;
 }
 
 /* 导出下拉 */

@@ -108,17 +108,9 @@ export async function initFood() {
   await fetchAll()
 }
 
-// 邮箱验证码登录（账号需提前在 Supabase 后台创建）
-export async function sendLoginCode(email) {
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: { shouldCreateUser: false },
-  })
-  if (error) throw error
-}
-
-export async function verifyLoginCode(email, token) {
-  const { data, error } = await supabase.auth.verifyOtp({ email, token, type: 'email' })
+// 邮箱 + 密码登录（账号需提前在 Supabase 后台创建）
+export async function signInWithPassword(email, password) {
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password })
   if (error) throw error
   authUser.value = data.user || null
 }
@@ -127,6 +119,56 @@ export async function signOut() {
   if (!isRemote) return
   await supabase.auth.signOut()
   authUser.value = null
+}
+
+/* ---------------- 旧本地数据迁移 ---------------- */
+// 云端模式下，旧版本写在 localStorage 里的数据不会自动出现，这里提供一次性导入
+export function localShopCount() {
+  if (!isRemote) return 0
+  return loadLocal().length
+}
+
+export async function importLocalData() {
+  if (!isRemote) return 0
+  const local = loadLocal()
+  if (!local.length) return 0
+
+  let done = 0
+  for (const s of local) {
+    const { data: shopRow, error } = await supabase
+      .from('shops')
+      .insert({
+        name: s.name || '未命名店铺',
+        category: s.category || '',
+        location: s.location || '',
+        note: s.note || '',
+      })
+      .select()
+      .single()
+    if (error) throw error
+
+    const dishes = (s.dishes || [])
+      .filter((d) => d.name)
+      .map((d) => ({
+        shop_id: shopRow.id,
+        name: d.name,
+        rating: Number(d.rating) || 0,
+        price: String(d.price ?? ''),
+        note: d.note || '',
+      }))
+    if (dishes.length) {
+      const { error: dishError } = await supabase.from('dishes').insert(dishes)
+      if (dishError) throw dishError
+    }
+    done++
+  }
+
+  // 成功后再清理本地旧数据，并留一份备份
+  localStorage.setItem(`${STORAGE_KEY}-backup`, JSON.stringify(local))
+  localStorage.removeItem(STORAGE_KEY)
+
+  await fetchAll()
+  return done
 }
 
 /* ---------------- 店铺 ---------------- */
