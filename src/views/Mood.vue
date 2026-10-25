@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue'
+import PageBack from '../components/PageBack.vue'
 
 // 五种情绪状态：CSS 变量驱动配色（背景 / 圆环发光 / 文字色）
 const moods = [
@@ -97,6 +98,8 @@ const orbStyle = computed(() => ({
 
 <template>
   <div class="mood" :style="{ backgroundColor: current.bg }">
+    <PageBack class="mood-back" />
+
     <div class="mood-inner">
       <div class="orb-wrap">
         <div class="orb" :style="orbStyle">
@@ -138,12 +141,21 @@ const orbStyle = computed(() => ({
 <style scoped>
 /* 禅意极简：高亮度低饱和背景，圆环当主角 */
 .mood {
+  position: relative;
   min-height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 2rem 2.5rem;
   transition: background-color 800ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mood-back {
+  position: absolute;
+  top: 1.6rem;
+  left: 1.6rem;
+  margin-bottom: 0;
+  z-index: 5;
 }
 
 .mood-inner {

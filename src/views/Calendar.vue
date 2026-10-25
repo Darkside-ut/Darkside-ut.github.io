@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { ArrowLeft, ArrowRight, Plus, Delete, Check } from '@element-plus/icons-vue'
+import PageBack from '../components/PageBack.vue'
 import {
   events,
   addEvent,
@@ -171,6 +172,8 @@ const monthStats = computed(() => {
 
 <template>
   <div class="page">
+    <PageBack />
+
     <div class="page-card calendar-card">
       <h2 class="page-title">日历</h2>
       <div class="section-sub">日程与 DDL 管理，临近任务会出现在侧栏头像旁</div>

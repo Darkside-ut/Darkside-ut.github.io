@@ -1,5 +1,5 @@
 <script setup>
-import { Sunny, Calendar, Reading, Timer } from '@element-plus/icons-vue'
+import { Sunny, Calendar, Reading, Timer, Food } from '@element-plus/icons-vue'
 
 // 组件列表：新增组件在这里登记即可，卡片会自动渲染
 const components = [
@@ -30,6 +30,13 @@ const components = [
     path: '/components/focus',
     icon: Timer,
     color: '#34a86c',
+  },
+  {
+    name: '美食评价',
+    desc: '记录探店店铺，为每道菜打分写评价',
+    path: '/components/food',
+    icon: Food,
+    color: '#c05621',
   },
 ]
 </script>

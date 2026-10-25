@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import PageBack from '../components/PageBack.vue'
 import {
   focusState,
   timerText,
@@ -68,6 +69,8 @@ const modes = ['focus', 'short', 'long']
 
 <template>
   <div class="page">
+    <PageBack />
+
     <div class="page-card focus-card">
       <h2 class="page-title">专注中心</h2>
       <div class="section-sub">番茄钟 · 喝水提醒 · 护眼提醒</div>

@@ -61,6 +61,11 @@ const routes = [
         name: 'focus',
         component: () => import('../views/Focus.vue'),
       },
+      {
+        path: 'components/food',
+        name: 'food',
+        component: () => import('../views/Food.vue'),
+      },
     ],
   },
 ]

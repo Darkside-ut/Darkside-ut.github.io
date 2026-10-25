@@ -3,6 +3,7 @@ import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { Delete, Upload, RefreshRight } from '@element-plus/icons-vue'
 import RootsView from './vocab/RootsView.vue'
 import SelectMenu from '../components/SelectMenu.vue'
+import PageBack from '../components/PageBack.vue'
 import { unzip as unzipAsyncCb, strFromU8 } from 'fflate'
 import {
   ready,
@@ -445,6 +446,8 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="page">
+    <PageBack />
+
     <div
       class="page-card vocab-card"
       @dragenter.prevent="onDragEnter"
