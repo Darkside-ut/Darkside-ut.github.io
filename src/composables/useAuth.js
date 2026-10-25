@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { isRemote, supabase } from '../lib/supabase.js'
 
 /* ============================================================
@@ -33,6 +33,28 @@ export function initAuth() {
   })
 }
 
+// 等会话恢复完成（路由守卫用），最多等 3 秒，避免 Supabase 不可达时卡死
+let readyPromise = null
+export function ensureAuthReady() {
+  initAuth()
+  if (authReady.value || !isRemote) return Promise.resolve()
+  if (!readyPromise) {
+    readyPromise = new Promise((resolve) => {
+      const stop = watch(authReady, (v) => {
+        if (v) {
+          stop()
+          resolve()
+        }
+      })
+      setTimeout(() => {
+        stop()
+        resolve()
+      }, 3000)
+    })
+  }
+  return readyPromise
+}
+
 export async function signInWithPassword(email, password) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password })
   if (error) throw error
@@ -43,16 +65,4 @@ export async function signOut() {
   if (!isRemote) return
   await supabase.auth.signOut()
   authUser.value = null
-}
-
-/* ---------------- 登录弹窗（任意页面都可唤起） ---------------- */
-export const loginOpen = ref(false)
-
-export function openLogin() {
-  if (!isRemote) return
-  loginOpen.value = true
-}
-
-export function closeLogin() {
-  loginOpen.value = false
 }

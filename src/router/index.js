@@ -1,7 +1,14 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import DefaultLayout from '../layouts/DefaultLayout.vue'
+import { isRemote } from '../lib/supabase.js'
+import { authUser, ensureAuthReady } from '../composables/useAuth.js'
 
 const routes = [
+  {
+    path: '/login',
+    name: 'login',
+    component: () => import('../views/Login.vue'),
+  },
   {
     path: '/',
     component: DefaultLayout,
@@ -73,6 +80,26 @@ const routes = [
 const router = createRouter({
   history: createWebHashHistory(),
   routes,
+})
+
+// 全站访问控制：配置了 Supabase 时，未登录一律跳转到登录页
+router.beforeEach(async (to) => {
+  // 未配置 Supabase（本地模式）：站点完全开放
+  if (!isRemote) return to.name === 'login' ? { path: '/' } : true
+
+  await ensureAuthReady()
+  const loggedIn = !!authUser.value
+
+  if (to.name === 'login') {
+    return loggedIn ? { path: '/' } : true
+  }
+  if (!loggedIn) {
+    return {
+      name: 'login',
+      query: to.fullPath && to.fullPath !== '/' ? { redirect: to.fullPath } : {},
+    }
+  }
+  return true
 })
 
 // 部署新版本后，仍停留在旧页面的标签页会引用已经被替换掉的旧分块，

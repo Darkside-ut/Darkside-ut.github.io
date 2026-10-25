@@ -20,7 +20,7 @@ import {
   updateDish,
   updateShop,
 } from '../composables/useFood.js'
-import { isLoggedIn, openLogin, remoteEnabled } from '../composables/useAuth.js'
+import { isLoggedIn, remoteEnabled } from '../composables/useAuth.js'
 
 /* ---------------- 权限 / 登录 ---------------- */
 // 本地模式始终可编辑；云端模式需要登录（登录入口在左侧栏，全站共用）
@@ -335,15 +335,6 @@ function starsText(rating) {
           </div>
         </div>
 
-        <button
-          v-if="remoteEnabled && !isLoggedIn"
-          class="readonly-hint"
-          @click="openLogin"
-        >
-          <span class="lock">🔒</span>
-          只读模式 · 点此登录后编辑
-        </button>
-
         <div v-if="canEdit && localCount > 0" class="import-hint">
           <span>检测到本机有 {{ localCount }} 家旧店铺数据（切换云端前保存的）</span>
           <button class="ghost-btn small" :disabled="importing" @click="doImportLocal">
@@ -584,31 +575,6 @@ function starsText(rating) {
   align-items: center;
   gap: 0.5rem;
   flex-shrink: 0;
-}
-
-.readonly-hint {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  margin: -0.4rem 0 1rem;
-  padding: 0.25rem 0.75rem;
-  font-family: inherit;
-  font-size: 0.68rem;
-  color: #8d9bb5;
-  background: rgba(37, 99, 235, 0.05);
-  border: 1px dashed rgba(37, 99, 235, 0.18);
-  border-radius: 20px;
-  transition: 0.2s;
-}
-
-.readonly-hint:hover {
-  color: var(--accent);
-  border-color: rgba(37, 99, 235, 0.45);
-  background: rgba(37, 99, 235, 0.1);
-}
-
-.readonly-hint .lock {
-  font-size: 0.7rem;
 }
 
 .import-hint {

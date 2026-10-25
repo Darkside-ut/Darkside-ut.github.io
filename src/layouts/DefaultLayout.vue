@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   House,
   Grid,
@@ -9,7 +10,6 @@ import {
   Message,
   Top,
   Box,
-  User,
 } from '@element-plus/icons-vue'
 import {
   useNow,
@@ -18,26 +18,20 @@ import {
   formatLeft,
 } from '../composables/useSchedule.js'
 import { alerts, dismissAlert } from '../composables/useFocus.js'
-import LoginDialog from '../components/LoginDialog.vue'
-import {
-  authUser,
-  initAuth,
-  isLoggedIn,
-  openLogin,
-  remoteEnabled,
-  signOut,
-} from '../composables/useAuth.js'
+import { authUser, initAuth, isLoggedIn, remoteEnabled, signOut } from '../composables/useAuth.js'
 
 async function doSignOut() {
   try {
     await signOut()
-    ElMessage.success('已退出登录')
+    router.replace('/login')
   } catch (e) {
     ElMessage.error('退出失败：' + (e?.message || e))
   }
 }
 
 // 临近 DDL：侧栏头像旁简略展示（未完成、7 天内、最多 3 条）
+const router = useRouter()
+
 const now = useNow(30000)
 const upcomingDdl = useUpcomingDdl(now, 7, 3)
 
@@ -140,16 +134,10 @@ onBeforeUnmount(() => {
       </nav>
 
       <div class="social">
-        <!-- 全站登录状态 -->
-        <div v-if="remoteEnabled" class="account">
-          <button v-if="!isLoggedIn" class="account-btn" @click="openLogin">
-            <el-icon><User /></el-icon>
-            <span>登录</span>
-          </button>
-          <template v-else>
-            <span class="account-email" :title="authUser.email">{{ authUser.email }}</span>
-            <button class="account-btn" @click="doSignOut">退出</button>
-          </template>
+        <!-- 全站登录状态（未登录会被路由守卫拦到登录页，这里只显示已登录态） -->
+        <div v-if="remoteEnabled && isLoggedIn" class="account">
+          <span class="account-email" :title="authUser.email">{{ authUser.email }}</span>
+          <button class="account-btn" @click="doSignOut">退出</button>
         </div>
 
         <div class="location">
@@ -220,9 +208,6 @@ onBeforeUnmount(() => {
         <div class="toast-body">{{ a.body }}</div>
       </div>
     </transition-group>
-
-    <!-- 全站登录弹窗 -->
-    <LoginDialog />
   </div>
 </template>
 
