@@ -11,10 +11,8 @@ const STORAGE_KEY = 'food-review-shops'
 
 export const remoteEnabled = isRemote
 export const loading = ref(false)
-export const authUser = ref(null)
 
 let inited = false
-let authInited = false
 
 function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -88,37 +86,12 @@ async function fetchAll() {
   }
 }
 
-/* ---------------- 初始化 / 登录 ---------------- */
-export function initAuth() {
-  if (!isRemote || authInited) return
-  authInited = true
-  supabase.auth.getSession().then(({ data }) => {
-    authUser.value = data.session?.user || null
-  })
-  supabase.auth.onAuthStateChange((_event, session) => {
-    authUser.value = session?.user || null
-  })
-}
-
+/* ---------------- 初始化 ---------------- */
 export async function initFood() {
   if (inited) return
   inited = true
   if (!isRemote) return
-  initAuth()
   await fetchAll()
-}
-
-// 邮箱 + 密码登录（账号需提前在 Supabase 后台创建）
-export async function signInWithPassword(email, password) {
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-  if (error) throw error
-  authUser.value = data.user || null
-}
-
-export async function signOut() {
-  if (!isRemote) return
-  await supabase.auth.signOut()
-  authUser.value = null
 }
 
 /* ---------------- 旧本地数据迁移 ---------------- */

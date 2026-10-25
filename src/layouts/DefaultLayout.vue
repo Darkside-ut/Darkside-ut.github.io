@@ -9,6 +9,7 @@ import {
   Message,
   Top,
   Box,
+  User,
 } from '@element-plus/icons-vue'
 import {
   useNow,
@@ -17,6 +18,24 @@ import {
   formatLeft,
 } from '../composables/useSchedule.js'
 import { alerts, dismissAlert } from '../composables/useFocus.js'
+import LoginDialog from '../components/LoginDialog.vue'
+import {
+  authUser,
+  initAuth,
+  isLoggedIn,
+  openLogin,
+  remoteEnabled,
+  signOut,
+} from '../composables/useAuth.js'
+
+async function doSignOut() {
+  try {
+    await signOut()
+    ElMessage.success('已退出登录')
+  } catch (e) {
+    ElMessage.error('退出失败：' + (e?.message || e))
+  }
+}
 
 // 临近 DDL：侧栏头像旁简略展示（未完成、7 天内、最多 3 条）
 const now = useNow(30000)
@@ -50,6 +69,7 @@ function scrollToTop() {
 
 onMounted(() => {
   contentRef.value?.addEventListener('scroll', onScroll)
+  initAuth()
 
   const prefetch = () => Object.values(routeComponents).forEach((load) => load())
   if ('requestIdleCallback' in window) {
@@ -120,6 +140,18 @@ onBeforeUnmount(() => {
       </nav>
 
       <div class="social">
+        <!-- 全站登录状态 -->
+        <div v-if="remoteEnabled" class="account">
+          <button v-if="!isLoggedIn" class="account-btn" @click="openLogin">
+            <el-icon><User /></el-icon>
+            <span>登录</span>
+          </button>
+          <template v-else>
+            <span class="account-email" :title="authUser.email">{{ authUser.email }}</span>
+            <button class="account-btn" @click="doSignOut">退出</button>
+          </template>
+        </div>
+
         <div class="location">
           <el-icon><Location /></el-icon>
           中国 · 合肥
@@ -188,6 +220,9 @@ onBeforeUnmount(() => {
         <div class="toast-body">{{ a.body }}</div>
       </div>
     </transition-group>
+
+    <!-- 全站登录弹窗 -->
+    <LoginDialog />
   </div>
 </template>
 
@@ -374,6 +409,47 @@ onBeforeUnmount(() => {
   margin-top: auto;
   padding-top: 1.5rem;
   border-top: 1px solid rgba(37, 99, 235, 0.2);
+}
+
+/* 全站登录状态 */
+.account {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+
+.account-email {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0.28rem 0.7rem;
+  font-family: inherit;
+  font-size: 0.7rem;
+  color: var(--accent);
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  border-radius: 20px;
+  transition: 0.2s;
+}
+
+.account-btn:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.account-btn .el-icon {
+  font-size: 0.85rem;
 }
 
 .location {

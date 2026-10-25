@@ -6,72 +6,25 @@ import PageBack from '../components/PageBack.vue'
 import {
   addDish,
   addShop,
-  authUser,
   dishCount,
   formatDay,
   importLocalData,
   initFood,
   loading,
   localShopCount,
-  remoteEnabled,
   removeDish,
   removeShop,
   shopRating,
   shops,
-  signInWithPassword,
-  signOut,
   totals,
   updateDish,
   updateShop,
 } from '../composables/useFood.js'
+import { isLoggedIn, openLogin, remoteEnabled } from '../composables/useAuth.js'
 
 /* ---------------- 权限 / 登录 ---------------- */
-// 本地模式始终可编辑；云端模式需要登录
-const canEdit = computed(() => !remoteEnabled || !!authUser.value)
-const isLoggedIn = computed(() => !!authUser.value)
-
-const loginDialog = ref(false)
-const loginEmail = ref('')
-const loginPassword = ref('')
-const sending = ref(false)
-
-function openLogin() {
-  loginEmail.value = authUser.value?.email || ''
-  loginPassword.value = ''
-  loginDialog.value = true
-}
-
-async function doLogin() {
-  const email = loginEmail.value.trim()
-  const password = loginPassword.value
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    ElMessage.warning('请输入有效的邮箱')
-    return
-  }
-  if (!password) {
-    ElMessage.warning('请输入密码')
-    return
-  }
-  sending.value = true
-  try {
-    await signInWithPassword(email, password)
-    loginDialog.value = false
-    ElMessage.success('登录成功，现在可以编辑了')
-  } catch (e) {
-    ElMessage.error(loginErrorText(e))
-  } finally {
-    sending.value = false
-  }
-}
-
-async function doSignOut() {
-  try {
-    await signOut()
-    ElMessage.success('已退出登录')
-  } catch (e) {
-    ElMessage.error(loginErrorText(e))
-  }
-}
+// 本地模式始终可编辑；云端模式需要登录（登录入口在左侧栏，全站共用）
+const canEdit = computed(() => !remoteEnabled || isLoggedIn.value)
 
 /* ---------------- 旧本地数据导入 ---------------- */
 const localCount = ref(localShopCount())
@@ -88,16 +41,6 @@ async function doImportLocal() {
   } finally {
     importing.value = false
   }
-}
-
-function loginErrorText(e) {
-  const msg = String(e?.message || e || '未知错误')
-  if (/invalid login credentials/i.test(msg)) return '邮箱或密码不正确'
-  if (/email not confirmed/i.test(msg)) {
-    return '邮箱尚未验证，请在 Supabase → Authentication → Users 中确认该用户'
-  }
-  if (/rate limit/i.test(msg)) return '尝试太频繁，请稍后再试'
-  return msg
 }
 
 /* ---------------- 列表 / 筛选 ---------------- */
@@ -385,13 +328,6 @@ function starsText(rating) {
               </transition>
             </div>
 
-            <template v-if="remoteEnabled">
-              <button v-if="isLoggedIn" class="ghost-btn" :title="authUser.email" @click="doSignOut">
-                退出登录
-              </button>
-              <button v-else class="ghost-btn" @click="openLogin">登录</button>
-            </template>
-
             <button v-if="canEdit" class="primary-btn" @click="openShopDialog()">
               <el-icon><Plus /></el-icon>
               <span>添加店铺</span>
@@ -399,10 +335,14 @@ function starsText(rating) {
           </div>
         </div>
 
-        <div v-if="remoteEnabled && !isLoggedIn" class="readonly-hint">
+        <button
+          v-if="remoteEnabled && !isLoggedIn"
+          class="readonly-hint"
+          @click="openLogin"
+        >
           <span class="lock">🔒</span>
-          只读模式 · 登录后可以编辑
-        </div>
+          只读模式 · 点此登录后编辑
+        </button>
 
         <div v-if="canEdit && localCount > 0" class="import-hint">
           <span>检测到本机有 {{ localCount }} 家旧店铺数据（切换云端前保存的）</span>
@@ -542,34 +482,6 @@ function starsText(rating) {
       </template>
     </div>
 
-    <!-- ===================== 登录弹窗 ===================== -->
-    <el-dialog v-model="loginDialog" title="登录后编辑" width="400px" align-center>
-      <div class="login-box">
-        <p class="login-tip">使用在 Supabase 后台创建的管理员账号登录。</p>
-        <el-input
-          v-model="loginEmail"
-          placeholder="邮箱"
-          autocomplete="username"
-          @keyup.enter="doLogin"
-        />
-        <el-input
-          v-model="loginPassword"
-          type="password"
-          show-password
-          placeholder="密码"
-          autocomplete="current-password"
-          @keyup.enter="doLogin"
-        />
-        <p class="login-hint">忘记密码可在 Supabase → Authentication → Users 中重置。</p>
-      </div>
-      <template #footer>
-        <button class="ghost-btn" @click="loginDialog = false">取消</button>
-        <button class="primary-btn" :disabled="sending" @click="doLogin">
-          {{ sending ? '登录中…' : '登录' }}
-        </button>
-      </template>
-    </el-dialog>
-
     <!-- ===================== 店铺弹窗 ===================== -->
     <el-dialog
       v-model="shopDialog"
@@ -680,11 +592,19 @@ function starsText(rating) {
   gap: 0.35rem;
   margin: -0.4rem 0 1rem;
   padding: 0.25rem 0.75rem;
+  font-family: inherit;
   font-size: 0.68rem;
   color: #8d9bb5;
   background: rgba(37, 99, 235, 0.05);
   border: 1px dashed rgba(37, 99, 235, 0.18);
   border-radius: 20px;
+  transition: 0.2s;
+}
+
+.readonly-hint:hover {
+  color: var(--accent);
+  border-color: rgba(37, 99, 235, 0.45);
+  background: rgba(37, 99, 235, 0.1);
 }
 
 .readonly-hint .lock {
@@ -715,24 +635,6 @@ function starsText(rating) {
   text-align: center;
   font-size: 0.78rem;
   color: var(--text-dim);
-}
-
-/* 登录弹窗 */
-.login-box {
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
-}
-
-.login-tip {
-  font-size: 0.76rem;
-  line-height: 1.7;
-  color: var(--text-dim);
-}
-
-.login-hint {
-  font-size: 0.66rem;
-  color: #8d9bb5;
 }
 
 /* 导出下拉 */
