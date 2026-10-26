@@ -1,9 +1,8 @@
-import { createClient } from '@supabase/supabase-js'
-
 /* ============================================================
-   Supabase 客户端
-   - 只有在 .env.local / GitHub Actions 里配置了下面两个变量时才启用
-   - 未配置时整个站点继续使用 localStorage（本地模式），不会报错
+   Supabase 客户端（按需加载）
+   - 只有配置了 URL + key 时才启用；否则站点保持本地模式
+   - @supabase/supabase-js 体积较大（约 260KB），用动态 import，
+     避免打进主包拖慢首屏
    ============================================================ */
 
 const rawUrl = import.meta.env.VITE_SUPABASE_URL || ''
@@ -12,6 +11,29 @@ const key = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
 // 允许直接粘贴 Data API 地址（.../rest/v1/），统一去掉后缀
 const url = rawUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '')
 
-export const supabase = url && key ? createClient(url, key) : null
+export const isRemote = !!(url && key)
 
-export const isRemote = !!supabase
+// 项目 ref，用于读取 supabase-js 存在 localStorage 里的会话
+export const projectRef = (() => {
+  try {
+    return new URL(url).hostname.split('.')[0]
+  } catch {
+    return ''
+  }
+})()
+
+let clientPromise = null
+
+export function getSupabase() {
+  if (!isRemote) return Promise.resolve(null)
+  if (!clientPromise) {
+    clientPromise = import('@supabase/supabase-js')
+      .then(({ createClient }) => createClient(url, key))
+      .catch((e) => {
+        // 加载失败时允许下次重试
+        clientPromise = null
+        throw e
+      })
+  }
+  return clientPromise
+}

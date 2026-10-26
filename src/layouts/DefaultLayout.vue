@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   House,
@@ -18,7 +18,14 @@ import {
   formatLeft,
 } from '../composables/useSchedule.js'
 import { alerts, dismissAlert } from '../composables/useFocus.js'
-import { authUser, initAuth, isLoggedIn, remoteEnabled, signOut } from '../composables/useAuth.js'
+import {
+  authReady,
+  authUser,
+  initAuth,
+  isLoggedIn,
+  remoteEnabled,
+  signOut,
+} from '../composables/useAuth.js'
 
 async function doSignOut() {
   try {
@@ -31,6 +38,11 @@ async function doSignOut() {
 
 // 临近 DDL：侧栏头像旁简略展示（未完成、7 天内、最多 3 条）
 const router = useRouter()
+
+// SDK 校验后发现会话已失效（或刷新失败）时回到登录页
+watch([authReady, authUser], ([ready, user]) => {
+  if (remoteEnabled && ready && !user) router.replace('/login')
+})
 
 const now = useNow(30000)
 const upcomingDdl = useUpcomingDdl(now, 7, 3)

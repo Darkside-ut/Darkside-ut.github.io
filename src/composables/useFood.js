@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import { isRemote, supabase } from '../lib/supabase.js'
+import { getSupabase, isRemote } from '../lib/supabase.js'
 
 /* ============================================================
    美食评价：店铺 + 菜品星级
@@ -67,6 +67,7 @@ function fromDishRow(row) {
 async function fetchAll() {
   loading.value = true
   try {
+    const supabase = await getSupabase()
     const [shopRes, dishRes] = await Promise.all([
       supabase.from('shops').select('*').order('created_at', { ascending: false }),
       supabase.from('dishes').select('*').order('created_at', { ascending: false }),
@@ -106,6 +107,7 @@ export async function importLocalData() {
   const local = loadLocal()
   if (!local.length) return 0
 
+  const supabase = await getSupabase()
   let done = 0
   for (const s of local) {
     const { data: shopRow, error } = await supabase
@@ -161,6 +163,7 @@ export async function addShop(payload) {
     return
   }
 
+  const supabase = await getSupabase()
   const { data, error } = await supabase
     .from('shops')
     .insert({
@@ -184,6 +187,7 @@ export async function updateShop(id, patch) {
     return
   }
 
+  const supabase = await getSupabase()
   const { data, error } = await supabase
     .from('shops')
     .update({
@@ -208,6 +212,7 @@ export async function removeShop(id) {
     return
   }
 
+  const supabase = await getSupabase()
   const { error } = await supabase.from('shops').delete().eq('id', id)
   if (error) throw error
   shops.value = shops.value.filter((s) => s.id !== id)
@@ -231,6 +236,7 @@ export async function addDish(shopId, payload) {
     return
   }
 
+  const supabase = await getSupabase()
   const { data, error } = await supabase
     .from('dishes')
     .insert({
@@ -260,6 +266,7 @@ export async function updateDish(shopId, dishId, patch) {
     return
   }
 
+  const supabase = await getSupabase()
   const { data, error } = await supabase
     .from('dishes')
     .update({
@@ -287,6 +294,7 @@ export async function removeDish(shopId, dishId) {
     return
   }
 
+  const supabase = await getSupabase()
   const { error } = await supabase.from('dishes').delete().eq('id', dishId)
   if (error) throw error
   const shop = shops.value.find((s) => s.id === shopId)

@@ -1,7 +1,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import DefaultLayout from '../layouts/DefaultLayout.vue'
 import { isRemote } from '../lib/supabase.js'
-import { authUser, ensureAuthReady } from '../composables/useAuth.js'
+import { hasStoredSession, initAuth } from '../composables/useAuth.js'
 
 const routes = [
   {
@@ -83,22 +83,25 @@ const router = createRouter({
 })
 
 // 全站访问控制：配置了 Supabase 时，未登录一律跳转到登录页
-router.beforeEach(async (to) => {
+router.beforeEach((to) => {
   // 未配置 Supabase（本地模式）：站点完全开放
   if (!isRemote) return to.name === 'login' ? { path: '/' } : true
 
-  await ensureAuthReady()
-  const loggedIn = !!authUser.value
+  // 同步判断本地是否存有会话，避免为了一次判断就阻塞加载 Supabase SDK
+  const stored = hasStoredSession()
 
   if (to.name === 'login') {
-    return loggedIn ? { path: '/' } : true
+    return stored ? { path: '/' } : true
   }
-  if (!loggedIn) {
+  if (!stored) {
     return {
       name: 'login',
       query: to.fullPath && to.fullPath !== '/' ? { redirect: to.fullPath } : {},
     }
   }
+
+  // 有会话：先放行渲染，SDK 在后台加载并刷新令牌
+  initAuth()
   return true
 })
 
