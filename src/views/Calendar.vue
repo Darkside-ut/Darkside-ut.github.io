@@ -1,10 +1,11 @@
 <script setup>
 import { ref, computed } from 'vue'
-import { ArrowLeft, ArrowRight, Plus, Delete, Check } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, Plus, Delete, Check, Edit } from '@element-plus/icons-vue'
 import PageBack from '../components/PageBack.vue'
 import {
   events,
   addEvent,
+  updateEvent,
   removeEvent,
   toggleDone,
   dateKey,
@@ -23,7 +24,7 @@ const now = useNow(30000)
 const today = ref(new Date())
 const selected = ref(dateKey())
 
-const form = ref({
+const EMPTY_FORM = {
   title: '',
   time: '',
   note: '',
@@ -31,7 +32,11 @@ const form = ref({
   repeat: 'none',
   interval: 1,
   until: '',
-})
+}
+
+const form = ref({ ...EMPTY_FORM })
+// 非空表示正在编辑已有日程
+const editingId = ref('')
 
 const repeatOptions = [
   { value: 'none', label: '不重复' },
@@ -130,11 +135,33 @@ function selectDay(key, inMonth) {
   }
 }
 
+function resetForm() {
+  editingId.value = ''
+  form.value = { ...EMPTY_FORM }
+}
+
+function startEdit(e) {
+  editingId.value = e.id
+  form.value = {
+    title: e.title || '',
+    time: e.time || '',
+    note: e.note || '',
+    ddl: !!e.ddl,
+    repeat: e.repeat || 'none',
+    interval: Math.max(1, Number(e.interval) || 1),
+    until: e.until || '',
+  }
+  // 让编辑表单滚动到可见区域
+  requestAnimationFrame(() => {
+    document.querySelector('.add-form')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  })
+}
+
 function submit() {
   const title = form.value.title.trim()
   if (!title) return
-  addEvent({
-    date: selected.value,
+
+  const payload = {
     title,
     time: form.value.time,
     note: form.value.note.trim(),
@@ -142,16 +169,21 @@ function submit() {
     repeat: form.value.repeat,
     interval: Math.max(1, Number(form.value.interval) || 1),
     until: form.value.repeat === 'none' ? '' : form.value.until,
-  })
-  form.value = {
-    title: '',
-    time: '',
-    note: '',
-    ddl: true,
-    repeat: 'none',
-    interval: 1,
-    until: '',
   }
+
+  if (editingId.value) {
+    // 编辑时保留原日期；重复日程的锚点日期也不变
+    updateEvent(editingId.value, payload)
+  } else {
+    addEvent({ date: selected.value, ...payload })
+  }
+  resetForm()
+}
+
+function onDelete(e) {
+  if (!window.confirm(`删除日程「${e.title}」？`)) return
+  removeEvent(e.id)
+  if (editingId.value === e.id) resetForm()
 }
 
 const selectedLabel = computed(() => {
@@ -172,9 +204,10 @@ const monthStats = computed(() => {
 
 <template>
   <div class="page">
-    <PageBack />
+    <div class="cal-wrap">
+      <PageBack class="cal-back" />
 
-    <div class="page-card calendar-card">
+      <div class="page-card calendar-card">
       <h2 class="page-title">日历</h2>
       <div class="section-sub">日程与 DDL 管理，临近任务会出现在侧栏头像旁</div>
 
@@ -262,14 +295,29 @@ const monthStats = computed(() => {
                   <span v-if="e.note" class="note">{{ e.note }}</span>
                 </div>
               </div>
-              <button class="del" @click="removeEvent(e.id)" aria-label="删除">
-                <el-icon><Delete /></el-icon>
-              </button>
+              <div class="ev-actions">
+                <button
+                  class="ev-btn"
+                  :class="{ active: editingId === e.id }"
+                  aria-label="编辑"
+                  title="编辑"
+                  @click="startEdit(e)"
+                >
+                  <el-icon><Edit /></el-icon>
+                </button>
+                <button class="ev-btn del" aria-label="删除" title="删除" @click="onDelete(e)">
+                  <el-icon><Delete /></el-icon>
+                </button>
+              </div>
             </div>
           </div>
 
-          <!-- 新增 -->
+          <!-- 新增 / 编辑 -->
           <form class="add-form" @submit.prevent="submit">
+            <div v-if="editingId" class="editing-bar">
+              <span class="editing-label">正在编辑日程</span>
+              <button type="button" class="cancel-edit" @click="resetForm">取消编辑</button>
+            </div>
             <input v-model="form.title" class="inp" placeholder="日程标题" maxlength="30" />
             <div class="form-row">
               <input v-model="form.time" class="inp time-inp" type="time" />
@@ -307,17 +355,31 @@ const monthStats = computed(() => {
             </div>
             <input v-model="form.note" class="inp" placeholder="备注（可选）" maxlength="60" />
             <button class="add-btn" type="submit" :disabled="!form.title.trim()">
-              <el-icon><Plus /></el-icon>
-              添加到 {{ selectedLabel }}
+              <el-icon><component :is="editingId ? Check : Plus" /></el-icon>
+              {{ editingId ? '保存修改' : '添加到 ' + selectedLabel }}
             </button>
           </form>
         </div>
+      </div>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+/* 返回按钮与日历同列，按钮靠左、日历居中 */
+.cal-wrap {
+  width: 100%;
+  max-width: 980px;
+  display: flex;
+  flex-direction: column;
+}
+
+.cal-back {
+  align-self: flex-start;
+  margin-bottom: 1.6rem;
+}
+
 .calendar-card {
   max-width: 980px;
 }
@@ -619,17 +681,65 @@ const monthStats = computed(() => {
   white-space: nowrap;
 }
 
-.del {
+.ev-actions {
   flex-shrink: 0;
-  border: none;
-  background: none;
-  color: #b7c2d6;
-  font-size: 0.85rem;
-  padding: 2px;
-  transition: 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
-.del:hover {
+.ev-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: #b7c2d6;
+  font-size: 0.82rem;
+  transition: 0.18s;
+}
+
+.ev-btn:hover {
+  color: var(--accent);
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.ev-btn.del:hover {
+  color: #e04b4b;
+  background: rgba(224, 75, 75, 0.08);
+}
+
+.ev-btn.active {
+  color: #fff;
+  background: var(--accent);
+}
+
+/* 编辑态提示条 */
+.editing-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.7rem;
+  color: var(--accent);
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px dashed rgba(37, 99, 235, 0.3);
+  border-radius: 8px;
+}
+
+.cancel-edit {
+  padding: 0;
+  font-family: inherit;
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+}
+
+.cancel-edit:hover {
   color: #e04b4b;
 }
 
