@@ -181,6 +181,7 @@ watch(
       <template v-if="post">
         <h2 class="post-title">{{ post.title }}</h2>
         <div class="post-meta">
+          <span class="post-type">{{ post.type === 'note' ? '笔记' : '杂谈' }}</span>
           <span class="post-date">{{ post.date }}</span>
           <el-tag
             v-for="t in post.tags || []"
@@ -338,6 +339,16 @@ watch(
   color: var(--text-dim);
 }
 
+.post-type {
+  padding: 0.1rem 0.55rem;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: rgba(37, 99, 235, 0.09);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  border-radius: 20px;
+}
+
 .post-layout {
   display: flex;
   gap: 2rem;
@@ -477,6 +488,26 @@ watch(
 .post-content :deep(img) {
   max-width: 100%;
   border-radius: 12px;
+}
+
+/* 配图 */
+.post-content :deep(figure) {
+  margin: 1.5em 0;
+  text-align: center;
+}
+
+.post-content :deep(figure img) {
+  max-width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  box-shadow: 0 10px 26px -18px rgba(30, 60, 110, 0.55);
+}
+
+.post-content :deep(figcaption) {
+  margin-top: 0.55em;
+  font-size: 0.72rem;
+  line-height: 1.65;
+  color: var(--text-dim);
 }
 
 .post-content :deep(code) {

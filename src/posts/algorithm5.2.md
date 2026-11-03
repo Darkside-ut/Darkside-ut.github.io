@@ -1,5 +1,6 @@
 ---
 title: Topic 5.2
+type: note
 date: 2026-10-22
 tags: [算法基础]
 summary: 二项堆、斐波那契堆和不相交集

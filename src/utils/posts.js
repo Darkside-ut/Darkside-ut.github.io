@@ -419,7 +419,13 @@ const posts = Object.entries(files)
       const d = String(data.date.getDate()).padStart(2, '0')
       data.date = `${y}-${m}-${d}`
     }
-    return { slug, ...data, content }
+    // 随笔分类：note = 笔记，其余一律归为 essay（杂谈）
+    return {
+      slug,
+      ...data,
+      type: data.type === 'note' ? 'note' : 'essay',
+      content,
+    }
   })
   .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
 
@@ -499,6 +505,8 @@ const PRINT_CSS = `
   .print-body blockquote { margin: 1em 0; padding: 0.4em 1em; border-left: 4px solid var(--accent);
     color: var(--text-dim); background: #f4f7fb; }
   .print-body img { max-width: 100%; border-radius: 6px; }
+  .print-body figure { margin: 1.2em 0; text-align: center; break-inside: avoid; }
+  .print-body figcaption { margin-top: 6px; font-size: 11px; color: var(--text-dim); }
   .print-body hr { border: none; border-top: 1px solid #e2e8f2; margin: 1.4em 0; }
 
   /* 行内代码 */

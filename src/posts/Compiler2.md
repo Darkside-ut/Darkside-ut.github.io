@@ -1,5 +1,6 @@
 ---
 title: 各种分析表的构造方法
+type: note
 date: 2026-10-19
 tags: [编译原理]
 summary: 自顶向下文法LL(1)、自底向上文法LR

@@ -1,5 +1,6 @@
 ---
 title: Topic 3
+type: note
 date: 2026-10-10
 tags: [算法基础]
 summary: 基于比较的排序算法，介绍六种排序算法以及优先队列的数据结构

@@ -1,5 +1,6 @@
 ---
 title: 这是一篇示例文本
+type: essay
 date: 2026-10-07
 tags: [前端,示例]
 summary: 用 Vue 3 和 Element Plus 搭建个人网站的一些记录。

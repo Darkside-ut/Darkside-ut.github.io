@@ -1,5 +1,6 @@
 ---
 title: Topic 4.1
+type: note
 date: 2026-10-13
 tags: [算法基础]
 summary: 线性时间排序

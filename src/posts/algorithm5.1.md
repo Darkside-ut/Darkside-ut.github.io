@@ -1,5 +1,6 @@
 ---
 title: Topic 5.1
+type: note
 date: 2026-10-20
 tags: [算法基础]
 summary: BST、RB Tree 以及数据结构的扩充

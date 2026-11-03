@@ -1,5 +1,6 @@
 ---
 title: Topic 1
+type: note
 date: 2026-10-08
 tags: [算法基础]
 summary: 简单算法复杂度、递推式、算法设计思想以及排序和图等基础算法

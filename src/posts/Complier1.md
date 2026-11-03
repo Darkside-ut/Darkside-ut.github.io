@@ -1,5 +1,6 @@
 ---
 title: 构造 FIRST 与 FOLLOW 集合
+type: note
 date: 2026-10-07
 tags: [编译原理]
 summary: LL(1)文法的两大集合构造方法

@@ -1,5 +1,6 @@
 ---
 title: Topic 2
+type: note
 date: 2026-10-09
 tags: [算法基础]
 summary: 渐近记号、标准记号与常用函数以及递归式求解

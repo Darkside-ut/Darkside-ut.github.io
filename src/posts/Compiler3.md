@@ -1,5 +1,6 @@
 ---
 title: 从自然语言到最简 DFA
+type: note
 date: 2026-10-19
 tags: [编译原理]
 summary: 非形式描述的语言 → 正则表达式 RE → NFA → DFA → DFA 化简

@@ -1,5 +1,6 @@
 ---
 title: 迭代算法学习
+type: note
 date: 2026-07-22
 tags: [pplab]
 summary: 对于迭代算法程序推演的详细理解

@@ -1,5 +1,6 @@
 ---
 title: Topic 4.2
+type: note
 date: 2026-10-14
 tags: [算法基础]
 summary: 最小/最大值、期望线性时间选择、最坏情况线性时间选择
