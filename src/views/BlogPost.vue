@@ -55,14 +55,43 @@ const related = computed(() => {
     .map((x) => x.post)
 })
 
-/* ---------- 阅读进度条 ---------- */
+/* ---------- 阅读进度条 / 目录高亮 ---------- */
 const progress = ref(0)
+const activeSlug = ref('')
 let scrollEl = null
+
+function updateActiveHeading() {
+  if (!scrollEl) return
+  const toc = rendered.value.toc
+  if (!toc.length) {
+    activeSlug.value = ''
+    return
+  }
+
+  // 标题进入屏幕中间区域时切换高亮
+  const line = scrollEl.getBoundingClientRect().top + scrollEl.clientHeight * 0.5
+  let current = ''
+
+  for (const h of toc) {
+    const el = document.getElementById(h.slug)
+    if (!el) continue
+    if (el.getBoundingClientRect().top <= line) current = h.slug
+    else break
+  }
+
+  // 滚到底部时高亮最后一个小节
+  if (scrollEl.scrollTop + scrollEl.clientHeight >= scrollEl.scrollHeight - 4) {
+    current = toc[toc.length - 1].slug
+  }
+
+  activeSlug.value = current
+}
 
 function onScroll() {
   if (!scrollEl) return
   const max = scrollEl.scrollHeight - scrollEl.clientHeight
   progress.value = max > 0 ? Math.min(100, (scrollEl.scrollTop / max) * 100) : 0
+  updateActiveHeading()
 }
 
 /* ---------- 代码复制 / 图片灯箱 ---------- */
@@ -134,16 +163,18 @@ async function renderMermaid() {
 
 onMounted(async () => {
   await nextTick()
-  renderMermaid()
   scrollEl = document.querySelector('.content')
+  await renderMermaid()
   scrollEl?.addEventListener('scroll', onScroll)
   window.addEventListener('keydown', onKeydown)
+  window.addEventListener('resize', onScroll)
   onScroll()
 })
 
 onBeforeUnmount(() => {
   scrollEl?.removeEventListener('scroll', onScroll)
   window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('resize', onScroll)
 })
 
 // 同一篇文章组件被复用时（切换 slug），重新渲染
@@ -151,9 +182,10 @@ watch(
   () => route.params.slug,
   async () => {
     lightboxSrc.value = ''
+    activeSlug.value = ''
     await nextTick()
-    renderMermaid()
     scrollEl?.scrollTo({ top: 0 })
+    await renderMermaid()
     onScroll()
   }
 )
@@ -209,7 +241,7 @@ watch(
               :key="h.slug"
               :href="'#' + h.slug"
               class="toc-link"
-              :class="'toc-level-' + h.level"
+              :class="['toc-level-' + h.level, { active: activeSlug === h.slug }]"
               @click.prevent="scrollTo(h.slug)"
             >
               {{ h.text }}
@@ -396,29 +428,35 @@ watch(
 
 .toc-link {
   display: block;
-  padding: 0.18rem 0;
+  padding: 0.18rem 0.35rem;
   font-size: 0.8rem;
-  color: var(--text-dim);
+  color: #aab6c8;
   text-decoration: none;
   line-height: 1.4;
-  transition: 0.15s;
+  border-radius: 6px;
+  transition: color 0.18s, background 0.18s;
 }
 
 .toc-link:hover {
+  color: #7c8aa3;
+}
+
+/* 当前阅读到的小节：蓝色高亮 */
+.toc-link.active {
   color: var(--accent);
+  font-weight: 700;
+  background: rgba(37, 99, 235, 0.08);
 }
 
 .toc-level-1 {
-  padding-left: 0;
+  padding-left: 0.35rem;
   font-size: 0.84rem;
   font-weight: 700;
-  color: var(--text-dark);
 }
 .toc-level-2 {
   padding-left: 1em;
   font-size: 0.76rem;
   font-weight: 600;
-  color: var(--text-dark);
 }
 .toc-level-3 {
   padding-left: 2em;
@@ -431,12 +469,10 @@ watch(
 .toc-level-5 {
   padding-left: 4em;
   font-size: 0.62rem;
-  color: #8d9bb5;
 }
 .toc-level-6 {
   padding-left: 5em;
   font-size: 0.6rem;
-  color: #9aa8c0;
 }
 
 /* Markdown 正文样式（v-html 内容） */
