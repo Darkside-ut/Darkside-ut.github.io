@@ -94,6 +94,7 @@ function onScroll() {
   updateActiveHeading()
 }
 
+
 /* ---------- 代码复制 / 图片灯箱 ---------- */
 const articleRef = ref(null)
 const lightboxSrc = ref('')
@@ -193,12 +194,12 @@ watch(
 
 <template>
   <div class="page">
-    <!-- 阅读进度条 -->
-    <div class="read-progress">
-      <span :style="{ width: progress + '%' }"></span>
-    </div>
-
     <div class="page-card post-page">
+      <!-- 阅读进度条 -->
+      <div class="read-progress">
+        <span :style="{ width: progress + '%' }"></span>
+      </div>
+
       <div class="post-toolbar">
         <router-link to="/blog" class="back">
           <el-icon><ArrowLeft /></el-icon>
@@ -279,8 +280,23 @@ watch(
 </template>
 
 <style scoped>
+/* 阅读模式：整页铺开，无卡片边框 */
+.page {
+  flex-direction: column;
+  align-items: center;
+}
+
 .post-page {
-  max-width: 1000px;
+  width: 67%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .post-toolbar {
@@ -381,30 +397,31 @@ watch(
   border-radius: 20px;
 }
 
+/* 正文保持 67% 居中；目录固定在视口最右侧，不参与这 67% */
 .post-layout {
-  display: flex;
-  gap: 2rem;
-  align-items: flex-start;
+  display: block;
 }
 
 .post-content {
-  flex: 1;
+  width: 100%;
   min-width: 0;
 }
 
-/* 目录 */
+/* 目录：无卡片边框，只用一条细线与正文分隔 */
 .post-toc {
-  width: 180px;
-  flex-shrink: 0;
-  position: sticky;
-  top: 1rem;
-  max-height: calc(100vh - 2rem);
+  position: fixed;
+  top: 9rem;
+  right: 2.2rem;
+  width: clamp(150px, 12vw, 200px);
+  max-height: calc(100vh - 10rem);
   overflow-y: auto;
-  background: rgba(245, 249, 255, 0.7);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(37, 99, 235, 0.12);
-  border-radius: 16px;
-  padding: 0.8rem;
+  padding: 0 0 0 1.1rem;
+  background: transparent;
+  border: none;
+  border-left: 1px solid rgba(37, 99, 235, 0.18);
+  border-radius: 0;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 /* 目录滚动条：与页面滚动条一致的细蓝色圆角样式 */
@@ -804,9 +821,11 @@ watch(
   position: sticky;
   top: 0;
   z-index: 20;
+  width: 100%;
   height: 3px;
-  margin: -2rem -2.2rem 1.8rem;
+  margin: 0 0 1.4rem;
   background: rgba(37, 99, 235, 0.08);
+  border-radius: 2px;
   overflow: hidden;
 }
 
@@ -969,16 +988,26 @@ watch(
 /* 手机端：目录移到正文上方 */
 @media (max-width: 800px) {
   .post-layout {
+    display: flex;
     flex-direction: column;
+    gap: 1rem;
   }
   .post-toc {
     width: 100%;
     position: static;
     max-height: none;
+    overflow: visible;
     order: -1;
+    padding: 0 0 0.8rem;
+    border-left: none;
+    border-bottom: 1px solid rgba(37, 99, 235, 0.18);
+  }
+  .post-page,
+  .read-progress {
+    width: 100%;
   }
   .read-progress {
-    margin: -1rem -1rem 1rem;
+    margin: 0 0 1rem;
   }
 }
 </style>

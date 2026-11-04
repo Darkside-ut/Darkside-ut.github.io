@@ -1,6 +1,6 @@
 <script setup>
-import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   House,
   Grid,
@@ -30,7 +30,7 @@ import {
 async function doSignOut() {
   try {
     await signOut()
-    router.replace('/login')
+    router.replace('/')
   } catch (e) {
     ElMessage.error('退出失败：' + (e?.message || e))
   }
@@ -38,10 +38,14 @@ async function doSignOut() {
 
 // 临近 DDL：侧栏头像旁简略展示（未完成、7 天内、最多 3 条）
 const router = useRouter()
+const route = useRoute()
+
+// 阅读文章时收起左侧栏，让正文占满页面
+const isReading = computed(() => route.name === 'blog-post')
 
 // SDK 校验后发现会话已失效（或刷新失败）时回到登录页
 watch([authReady, authUser], ([ready, user]) => {
-  if (remoteEnabled && ready && !user) router.replace('/login')
+  if (remoteEnabled && ready && !user) router.replace('/')
 })
 
 const now = useNow(30000)
@@ -91,7 +95,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="layout">
+  <div class="layout" :class="{ reading: isReading }">
     <!-- 左侧栏 -->
     <aside class="sidebar">
       <div class="brand">
@@ -122,7 +126,7 @@ onBeforeUnmount(() => {
       </div>
 
       <nav class="nav">
-        <router-link class="nav-item" to="/">
+        <router-link class="nav-item" to="/home">
           <el-icon><House /></el-icon>
           <span>首页</span>
         </router-link>
@@ -230,6 +234,7 @@ onBeforeUnmount(() => {
   width: 100%;
   position: relative;
   z-index: 2;
+  overflow: hidden;
 }
 
 .sidebar {
@@ -244,6 +249,14 @@ onBeforeUnmount(() => {
   padding: 2rem 1.5rem;
   box-shadow: 8px 0 25px -12px rgba(30, 60, 110, 0.15);
   overflow-y: auto;
+  transition: margin-left 0.38s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+}
+
+/* 阅读文章：左侧栏滑出视野，正文占满 */
+.layout.reading .sidebar {
+  margin-left: calc(var(--sidebar-width) * -1);
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* 头像 + 品牌 */
@@ -657,4 +670,5 @@ onBeforeUnmount(() => {
     display: none;
   }
 }
+
 </style>

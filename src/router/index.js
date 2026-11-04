@@ -5,18 +5,28 @@ import { hasStoredSession, initAuth } from '../composables/useAuth.js'
 
 const routes = [
   {
+    // 开始页：全屏背景轮播 + 点此开始 + 登录
+    path: '/',
+    name: 'start',
+    component: () => import('../views/Start.vue'),
+  },
+  {
     path: '/login',
-    name: 'login',
-    component: () => import('../views/Login.vue'),
+    redirect: '/',
   },
   {
     path: '/',
     component: DefaultLayout,
     children: [
       {
-        path: '',
+        path: 'home',
         name: 'home',
         component: () => import('../views/Home.vue'),
+      },
+      {
+        // 旧地址兼容
+        path: 'nav',
+        redirect: '/home',
       },
       {
         path: 'portfolio',
@@ -82,20 +92,18 @@ const router = createRouter({
   routes,
 })
 
-// 全站访问控制：配置了 Supabase 时，未登录一律跳转到登录页
+// 全站访问控制：开始页公开，其余页面需要登录
 router.beforeEach((to) => {
+  // 开始页始终可以访问
+  if (to.name === 'start') return true
+
   // 未配置 Supabase（本地模式）：站点完全开放
-  if (!isRemote) return to.name === 'login' ? { path: '/' } : true
+  if (!isRemote) return true
 
   // 同步判断本地是否存有会话，避免为了一次判断就阻塞加载 Supabase SDK
-  const stored = hasStoredSession()
-
-  if (to.name === 'login') {
-    return stored ? { path: '/' } : true
-  }
-  if (!stored) {
+  if (!hasStoredSession()) {
     return {
-      name: 'login',
+      name: 'start',
       query: to.fullPath && to.fullPath !== '/' ? { redirect: to.fullPath } : {},
     }
   }
