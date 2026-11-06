@@ -15,6 +15,7 @@ summary: 因特网的构成与服务视角、网络边缘与核心、分组交�
 ## 0. 本章知识地图
 
 ```mermaid
+%%{init: {'themeVariables': {'cScale0': '#1d4ed8', 'cScaleLabel0': '#ffffff'}}}%%
 mindmap
   root((计算机网络))
     什么是因特网

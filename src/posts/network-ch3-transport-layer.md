@@ -15,6 +15,7 @@ summary: 多路复用与解复用、UDP、可靠数据传输原理、TCP 可靠�
 ## 0. 本章知识地图
 
 ```mermaid
+%%{init: {'themeVariables': {'cScale0': '#1d4ed8', 'cScaleLabel0': '#ffffff'}}}%%
 mindmap
   root((传输层))
     传输服务

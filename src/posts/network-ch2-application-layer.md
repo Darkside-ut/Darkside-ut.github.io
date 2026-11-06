@@ -15,6 +15,7 @@ summary: 应用层原理、HTTP、SMTP 与邮件、DNS、P2P、视频与 CDN，�
 ## 0. 本章知识地图
 
 ```mermaid
+%%{init: {'themeVariables': {'cScale0': '#1d4ed8', 'cScaleLabel0': '#ffffff'}}}%%
 mindmap
   root((应用层))
     应用层原理

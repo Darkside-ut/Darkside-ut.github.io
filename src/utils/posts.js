@@ -571,6 +571,14 @@ const PRINT_CSS = `
   .print-body .print-mermaid { display: flex; justify-content: center; padding: 0; border: none;
     background: none; white-space: normal; break-inside: avoid; }
   .print-body .print-mermaid svg { max-width: 100%; height: auto; }
+  .print-body .mermaid .section-root text,
+  .print-body .mermaid .section-root span,
+  .print-body .mermaid .section-root p,
+  .print-body .mermaid .section-root div,
+  .print-body .mermaid .section-root .mindmap-node-label {
+    fill: #fff !important;
+    color: #fff !important;
+  }
 
   @page { margin: 20mm 18mm; }
 `

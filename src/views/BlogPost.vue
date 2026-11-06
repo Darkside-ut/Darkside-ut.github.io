@@ -137,6 +137,15 @@ async function getMermaid() {
       startOnLoad: false,
       theme: 'default',
       securityLevel: 'loose',
+      // 脑图根节点（.section-root）的颜色取自 git0 / gitBranchLabel0，
+      // 默认是深蓝底 + 深色字，在浅色卡片里看不清，改为深蓝底 + 白字。
+      // cScale0 一并设置，兼容 neo look 下的 section--1 规则。
+      themeVariables: {
+        git0: '#1e3a8a',
+        gitBranchLabel0: '#ffffff',
+        cScale0: '#1e3a8a',
+        cScaleLabel0: '#ffffff',
+      },
     })
     mermaidInstance = mermaid
   }
@@ -698,6 +707,18 @@ watch(
 .post-content :deep(.mermaid svg) {
   max-width: 100%;
   height: auto;
+}
+
+/* 脑图根节点：强制白字，避免主题变量失效时和深色圆底混在一起。
+   Mermaid 的 markdown 标签是 <span class="nodeLabel"><p>…</p></span>，
+   而 .post-content p 会给里面的 <p> 直接上深色，所以必须连 p/div 一起覆盖。 */
+.post-content :deep(.mermaid svg .section-root text),
+.post-content :deep(.mermaid svg .section-root span),
+.post-content :deep(.mermaid svg .section-root p),
+.post-content :deep(.mermaid svg .section-root div),
+.post-content :deep(.mermaid svg .section-root .mindmap-node-label) {
+  fill: #ffffff !important;
+  color: #ffffff !important;
 }
 
 .post-content :deep(table) {
