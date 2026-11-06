@@ -110,14 +110,17 @@ async function onImport(e) {
 /* ---------- 闪卡 ---------- */
 const flashIndex = ref(0)
 const flipped = ref(false)
+const flashDirection = ref('next')
 const flashRoot = computed(() => roots[flashIndex.value] || roots[0])
 
 function flashNext() {
+  flashDirection.value = 'next'
   flashIndex.value = (flashIndex.value + 1) % TOTAL
   flipped.value = false
 }
 
 function flashPrev() {
+  flashDirection.value = 'prev'
   flashIndex.value = (flashIndex.value - 1 + TOTAL) % TOTAL
   flipped.value = false
 }
@@ -266,12 +269,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
       <div class="root-count">显示 {{ filtered.length }} / {{ TOTAL }}</div>
 
-      <div class="root-grid">
+      <TransitionGroup name="root-list" tag="div" class="root-grid">
         <button
-          v-for="r in filtered"
+          v-for="(r, index) in filtered"
           :key="r.id"
           class="root-card"
           :class="{ mastered: masteredIds.has(r.id) }"
+          :style="{ '--root-index': index % 12 }"
           @click="openRoot(r)"
         >
           <div class="root-card-top">
@@ -284,7 +288,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           </div>
           <span v-if="masteredIds.has(r.id)" class="mastered-badge">✓</span>
         </button>
-      </div>
+      </TransitionGroup>
 
       <div v-if="!filtered.length" class="empty-mini">没有匹配的词根，换个关键词试试</div>
     </div>
@@ -293,22 +297,24 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
     <div v-else-if="tab === 'flash'" class="flash-view">
       <div class="flash-top">{{ flashIndex + 1 }} / {{ TOTAL }}</div>
 
-      <div class="flash-card" @click="flipped = !flipped">
-        <div class="flash-inner" :class="{ flipped }">
-          <div class="flash-face front">
-            <div class="flash-root">{{ flashRoot.root }}</div>
-            <div class="flash-origin">{{ flashRoot.origin }}</div>
-            <div class="flash-hint">点击翻面</div>
-          </div>
-          <div class="flash-face back">
-            <div class="flash-root small">{{ flashRoot.root }}</div>
-            <div class="flash-meaning">{{ flashRoot.meaning }}</div>
-            <div class="flash-ex">
-              {{ flashRoot.examples.slice(0, 3).map((e) => e.word).join(' · ') }}
+      <transition :name="`flash-${flashDirection}`" mode="out-in">
+        <div :key="flashRoot.id" class="flash-card" @click="flipped = !flipped">
+          <div class="flash-inner" :class="{ flipped }">
+            <div class="flash-face front">
+              <div class="flash-root">{{ flashRoot.root }}</div>
+              <div class="flash-origin">{{ flashRoot.origin }}</div>
+              <div class="flash-hint">点击翻面</div>
+            </div>
+            <div class="flash-face back">
+              <div class="flash-root small">{{ flashRoot.root }}</div>
+              <div class="flash-meaning">{{ flashRoot.meaning }}</div>
+              <div class="flash-ex">
+                {{ flashRoot.examples.slice(0, 3).map((e) => e.word).join(' · ') }}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </transition>
 
       <div class="flash-actions">
         <button class="ghost-btn" @click="flashPrev">← 上一个</button>
@@ -487,9 +493,30 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
 /* ===== 词根卡片 ===== */
 .root-grid {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: 0.6rem;
+}
+
+.root-list-move,
+.root-list-enter-active,
+.root-list-leave-active {
+  transition: opacity 0.25s ease, transform 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.root-list-enter-active {
+  transition-delay: calc(var(--root-index, 0) * 22ms);
+}
+
+.root-list-enter-from {
+  opacity: 0;
+  transform: translateY(8px) scale(0.97);
+}
+
+.root-list-leave-to {
+  opacity: 0;
+  transform: scale(0.95);
 }
 
 .root-card {
@@ -822,6 +849,27 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   height: 240px;
   perspective: 1200px;
   cursor: pointer;
+}
+
+.flash-next-enter-active,
+.flash-next-leave-active,
+.flash-prev-enter-active,
+.flash-prev-leave-active {
+  transition: opacity 0.23s ease, transform 0.32s cubic-bezier(0.16, 1, 0.3, 1), filter 0.23s ease;
+}
+
+.flash-next-enter-from,
+.flash-prev-leave-to {
+  opacity: 0;
+  transform: translateX(28px) rotate(1deg) scale(0.97);
+  filter: blur(2px);
+}
+
+.flash-next-leave-to,
+.flash-prev-enter-from {
+  opacity: 0;
+  transform: translateX(-28px) rotate(-1deg) scale(0.97);
+  filter: blur(2px);
 }
 
 .flash-inner {

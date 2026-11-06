@@ -49,10 +49,11 @@ const components = [
 
       <div class="component-grid">
         <router-link
-          v-for="c in components"
+          v-for="(c, index) in components"
           :key="c.name"
           :to="c.path"
           class="component-card"
+          :style="{ '--component-index': index, '--component-color': c.color }"
         >
           <div class="cover" :style="{ background: `linear-gradient(135deg, ${c.color}33, ${c.color}99)` }">
             <el-icon :size="40"><component :is="c.icon" /></el-icon>
@@ -73,22 +74,49 @@ const components = [
 }
 
 .component-card {
+  position: relative;
+  overflow: hidden;
   background: rgba(245, 249, 255, 0.7);
   backdrop-filter: blur(8px);
   border-radius: 24px;
   padding: 1.2rem;
   border: 1px solid rgba(37, 99, 235, 0.12);
-  transition: 0.25s;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease, background 0.25s ease, box-shadow 0.3s ease;
+  animation: component-rise 0.48s calc(var(--component-index) * 70ms) cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.component-card::after {
+  content: '';
+  position: absolute;
+  width: 130px;
+  height: 130px;
+  right: -85px;
+  bottom: -90px;
+  border-radius: 50%;
+  background: var(--component-color);
+  opacity: 0.08;
+  transition: transform 0.42s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
 }
 
 .component-card:hover {
-  transform: translateY(-6px);
-  border-color: var(--accent);
-  background: rgba(37, 99, 235, 0.1);
-  box-shadow: 0 10px 24px -10px rgba(37, 99, 235, 0.25);
+  transform: translateY(-7px);
+  border-color: color-mix(in srgb, var(--component-color) 62%, transparent);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 16px 30px -18px var(--component-color);
+}
+
+.component-card:hover::after {
+  opacity: 0.14;
+  transform: scale(1.75);
+}
+
+.component-card:hover .cover .el-icon {
+  transform: rotate(-7deg) scale(1.1);
 }
 
 .cover {
+  position: relative;
+  z-index: 1;
   height: 100px;
   border-radius: 14px;
   color: #fff;
@@ -96,6 +124,16 @@ const components = [
   align-items: center;
   justify-content: center;
   margin-bottom: 0.9rem;
+}
+
+.cover .el-icon {
+  transition: transform 0.34s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.component-card h3,
+.component-card .desc {
+  position: relative;
+  z-index: 1;
 }
 
 .component-card h3 {
@@ -107,5 +145,16 @@ const components = [
   font-size: 0.82rem;
   color: var(--text-dim);
   line-height: 1.6;
+}
+
+@keyframes component-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 </style>

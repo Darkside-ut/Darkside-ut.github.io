@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import { ArrowLeft, ArrowRight, Plus, Delete, Check, Edit } from '@element-plus/icons-vue'
 import PageBack from '../components/PageBack.vue'
 import {
@@ -37,6 +37,12 @@ const EMPTY_FORM = {
 const form = ref({ ...EMPTY_FORM })
 // 非空表示正在编辑已有日程
 const editingId = ref('')
+const titleInput = ref(null)
+const monthDirection = ref('next')
+
+const monthKey = computed(
+  () => `${today.value.getFullYear()}-${today.value.getMonth() + 1}`
+)
 
 const repeatOptions = [
   { value: 'none', label: '不重复' },
@@ -113,25 +119,56 @@ function leftText(e) {
 }
 
 function prevMonth() {
+  monthDirection.value = 'prev'
   const d = today.value
   today.value = new Date(d.getFullYear(), d.getMonth() - 1, 1)
 }
 
 function nextMonth() {
+  monthDirection.value = 'next'
   const d = today.value
   today.value = new Date(d.getFullYear(), d.getMonth() + 1, 1)
 }
 
 function goToday() {
+  monthDirection.value = dateKey(new Date()) < dateKey(today.value) ? 'prev' : 'next'
   today.value = new Date()
   selected.value = dateKey()
 }
 
-function selectDay(key, inMonth) {
+function selectDay(key, inMonth, openForm = false) {
   selected.value = key
   if (!inMonth) {
     const [y, m] = key.split('-').map(Number)
-    today.value = new Date(y, m - 1, 1)
+    const target = new Date(y, m - 1, 1)
+    monthDirection.value = target < today.value ? 'prev' : 'next'
+    today.value = target
+  }
+  if (openForm) jumpToForm()
+}
+
+async function jumpToForm() {
+  editingId.value = ''
+  await nextTick()
+  titleInput.value?.focus()
+  titleInput.value?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+}
+
+function onCalendarKeydown(event) {
+  const tag = (event.target?.tagName || '').toLowerCase()
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return
+  if (event.key === 'PageUp') {
+    event.preventDefault()
+    prevMonth()
+  } else if (event.key === 'PageDown') {
+    event.preventDefault()
+    nextMonth()
+  } else if (event.key.toLowerCase() === 't') {
+    event.preventDefault()
+    goToday()
+  } else if (event.key.toLowerCase() === 'n') {
+    event.preventDefault()
+    jumpToForm()
   }
 }
 
@@ -200,6 +237,31 @@ const monthStats = computed(() => {
     todo: list.filter((e) => !e.done).length,
   }
 })
+
+// 统计当前月实际发生的日程；重复日程按每次出现计算。
+const monthOverview = computed(() => {
+  let total = 0
+  let done = 0
+  let ddl = 0
+  for (const cell of monthGrid.value) {
+    if (!cell.inMonth) continue
+    for (const event of eventsOnDay(cell.key)) {
+      total++
+      if (event.ddl) ddl++
+      if (isDoneOn(event, cell.key)) done++
+    }
+  }
+  return {
+    total,
+    done,
+    ddl,
+    percent: total ? Math.round((done / total) * 100) : 0,
+  }
+})
+
+const selectedDoneCount = computed(
+  () => dayEvents.value.filter((event) => isDoneOn(event, selected.value)).length
+)
 </script>
 
 <template>
@@ -207,9 +269,24 @@ const monthStats = computed(() => {
     <div class="cal-wrap">
       <PageBack class="cal-back" />
 
-      <div class="page-card calendar-card">
+      <div class="page-card calendar-card" tabindex="0" @keydown="onCalendarKeydown">
       <h2 class="page-title">日历</h2>
       <div class="section-sub">日程与 DDL 管理，临近任务会出现在侧栏头像旁</div>
+
+      <div class="month-overview">
+        <div class="overview-copy">
+          <span class="overview-label">本月完成度</span>
+          <strong>{{ monthOverview.percent }}%</strong>
+        </div>
+        <div class="overview-track" aria-hidden="true">
+          <span :style="{ transform: `scaleX(${monthOverview.percent / 100})` }"></span>
+        </div>
+        <div class="overview-meta">
+          <span>{{ monthOverview.done }}/{{ monthOverview.total }} 项完成</span>
+          <span>{{ monthOverview.ddl }} 项 DDL</span>
+        </div>
+        <div class="shortcut-hint"><kbd>PgUp</kbd><kbd>PgDn</kbd> 月份 · <kbd>T</kbd> 今天 · <kbd>N</kbd> 新建</div>
+      </div>
 
       <div class="cal-layout">
         <!-- ============ 月历 ============ -->
@@ -232,40 +309,53 @@ const monthStats = computed(() => {
             <span v-for="w in WEEKDAYS" :key="w">{{ w }}</span>
           </div>
 
-          <div class="grid">
-            <button
-              v-for="c in monthGrid"
-              :key="c.key"
-              class="cell"
-              :class="{
-                out: !c.inMonth,
-                today: c.isToday,
-                selected: c.key === selected,
-              }"
-              @click="selectDay(c.key, c.inMonth)"
-            >
-              <span class="cell-day">{{ c.day }}</span>
-              <span class="dots">
-                <span
-                  v-for="e in eventsOnDay(c.key).slice(0, 4)"
-                  :key="e.id"
-                  class="dot"
-                  :style="{ backgroundColor: dotColor(e, c.key) }"
-                ></span>
-              </span>
-            </button>
-          </div>
+          <transition :name="`month-${monthDirection}`" mode="out-in">
+            <div :key="monthKey" class="grid">
+              <button
+                v-for="c in monthGrid"
+                :key="c.key"
+                class="cell"
+                :class="{
+                  out: !c.inMonth,
+                  today: c.isToday,
+                  selected: c.key === selected,
+                }"
+                :aria-label="`${c.key}，${eventsOnDay(c.key).length} 项日程`"
+                @click="selectDay(c.key, c.inMonth)"
+                @dblclick="selectDay(c.key, c.inMonth, true)"
+              >
+                <span class="cell-day">{{ c.day }}</span>
+                <span class="dots">
+                  <span
+                    v-for="e in eventsOnDay(c.key).slice(0, 4)"
+                    :key="e.id"
+                    class="dot"
+                    :style="{ backgroundColor: dotColor(e, c.key) }"
+                  ></span>
+                </span>
+              </button>
+            </div>
+          </transition>
+          <p class="grid-hint">双击日期可快速新建日程</p>
         </div>
 
         <!-- ============ 当天日程 ============ -->
         <div class="cal-side">
           <div class="side-head">
-            <span class="side-date">{{ selectedLabel }}</span>
-            <span class="side-count">{{ dayEvents.length }} 项</span>
+            <div class="side-title">
+              <span class="side-date">{{ selectedLabel }}</span>
+              <span class="side-count">
+                {{ dayEvents.length }} 项 · {{ selectedDoneCount }} 项完成
+              </span>
+            </div>
+            <button type="button" class="quick-add" @click="jumpToForm">
+              <el-icon><Plus /></el-icon>
+              新建
+            </button>
           </div>
 
-          <div class="day-list">
-            <div v-if="!dayEvents.length" class="empty">这一天还没有安排</div>
+          <TransitionGroup name="event-list" tag="div" class="day-list">
+            <div v-if="!dayEvents.length" key="empty" class="empty">这一天还没有安排</div>
             <div
               v-for="e in dayEvents"
               :key="e.id"
@@ -310,7 +400,7 @@ const monthStats = computed(() => {
                 </button>
               </div>
             </div>
-          </div>
+          </TransitionGroup>
 
           <!-- 新增 / 编辑 -->
           <form class="add-form" @submit.prevent="submit">
@@ -318,7 +408,7 @@ const monthStats = computed(() => {
               <span class="editing-label">正在编辑日程</span>
               <button type="button" class="cancel-edit" @click="resetForm">取消编辑</button>
             </div>
-            <input v-model="form.title" class="inp" placeholder="日程标题" maxlength="30" />
+            <input ref="titleInput" v-model="form.title" class="inp" placeholder="日程标题" maxlength="30" />
             <div class="form-row">
               <input v-model="form.time" class="inp time-inp" type="time" />
               <label class="ddl-toggle">
@@ -382,6 +472,76 @@ const monthStats = computed(() => {
 
 .calendar-card {
   max-width: 980px;
+  outline: none;
+}
+
+.month-overview {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem 0.9rem;
+  margin: -0.25rem 0 1.25rem;
+  padding: 0.7rem 0.85rem;
+  background: rgba(219, 234, 254, 0.4);
+  border: 1px solid rgba(37, 99, 235, 0.11);
+  border-radius: 14px;
+}
+
+.overview-copy {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.overview-label,
+.overview-meta,
+.shortcut-hint {
+  font-size: 0.66rem;
+  color: var(--text-dim);
+}
+
+.overview-copy strong {
+  color: var(--accent);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.overview-track {
+  height: 6px;
+  overflow: hidden;
+  background: rgba(37, 99, 235, 0.11);
+  border-radius: 99px;
+}
+
+.overview-track span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: left;
+  background: linear-gradient(90deg, #60a5fa, #2563eb);
+  border-radius: inherit;
+  transition: transform 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.overview-meta {
+  display: flex;
+  gap: 0.65rem;
+  white-space: nowrap;
+}
+
+.shortcut-hint {
+  grid-column: 1 / -1;
+  justify-self: end;
+  opacity: 0.65;
+}
+
+.shortcut-hint kbd {
+  padding: 1px 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--accent);
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 4px;
 }
 
 .cal-layout {
@@ -464,6 +624,32 @@ const monthStats = computed(() => {
   gap: 4px;
 }
 
+.month-next-enter-active,
+.month-next-leave-active,
+.month-prev-enter-active,
+.month-prev-leave-active {
+  transition: opacity 0.2s ease, transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.month-next-enter-from,
+.month-prev-leave-to {
+  opacity: 0;
+  transform: translateX(18px);
+}
+
+.month-next-leave-to,
+.month-prev-enter-from {
+  opacity: 0;
+  transform: translateX(-18px);
+}
+
+.grid-hint {
+  margin-top: 0.45rem;
+  text-align: right;
+  font-size: 0.62rem;
+  color: #9aa8c0;
+}
+
 .cell {
   position: relative;
   aspect-ratio: 1;
@@ -481,8 +667,14 @@ const monthStats = computed(() => {
 }
 
 .cell:hover {
+  z-index: 1;
   background: rgba(37, 99, 235, 0.1);
   border-color: rgba(37, 99, 235, 0.25);
+  transform: translateY(-2px);
+}
+
+.cell:active {
+  transform: scale(0.94);
 }
 
 .cell.out {
@@ -543,9 +735,37 @@ const monthStats = computed(() => {
 
 .side-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
+  gap: 0.7rem;
   margin-bottom: 0.8rem;
+}
+
+.side-title {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.quick-add {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.68rem;
+  color: var(--accent);
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  border-radius: 8px;
+  transition: 0.2s ease;
+}
+
+.quick-add:hover {
+  color: #fff;
+  background: var(--accent);
+  transform: translateY(-1px);
 }
 
 .side-date {
@@ -560,6 +780,7 @@ const monthStats = computed(() => {
 }
 
 .day-list {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -567,6 +788,26 @@ const monthStats = computed(() => {
   overflow-y: auto;
   margin-bottom: 1rem;
   padding-right: 2px;
+}
+
+.event-list-move,
+.event-list-enter-active,
+.event-list-leave-active {
+  transition: opacity 0.24s ease, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.event-list-enter-from {
+  opacity: 0;
+  transform: translateY(9px) scale(0.98);
+}
+
+.event-list-leave-to {
+  opacity: 0;
+  transform: translateX(12px) scale(0.98);
+}
+
+.event-list-leave-active {
+  width: 100%;
 }
 
 .empty {
@@ -589,10 +830,13 @@ const monthStats = computed(() => {
 
 .event:hover {
   background: rgba(255, 255, 255, 0.9);
+  transform: translateX(3px);
+  box-shadow: 0 8px 18px -16px rgba(30, 64, 175, 0.45);
 }
 
 .event.done {
   opacity: 0.55;
+  transform: scale(0.985);
 }
 
 .event.done .event-title {
@@ -868,6 +1112,20 @@ const monthStats = computed(() => {
 }
 
 @media (max-width: 480px) {
+  .month-overview {
+    grid-template-columns: 1fr auto;
+  }
+  .overview-track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .overview-meta {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .shortcut-hint {
+    display: none;
+  }
   .cell {
     border-radius: 9px;
     font-size: 0.78rem;

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
+import { computed, ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   House,
@@ -65,20 +65,39 @@ const routeComponents = {
   devices: () => import('../views/Devices.vue'),
 }
 
-// 回到顶部：监听内容区滚动，超过阈值显示按钮
+// 内容区滚动反馈：回到顶部按钮 + 页面顶部阅读进度
 const contentRef = ref(null)
 const showBackTop = ref(false)
+const scrollProgress = ref(0)
+let reducedMotion = false
 
 function onScroll() {
-  showBackTop.value = (contentRef.value?.scrollTop || 0) > 300
+  const el = contentRef.value
+  if (!el) return
+
+  showBackTop.value = el.scrollTop > 300
+  const max = el.scrollHeight - el.clientHeight
+  scrollProgress.value = max > 0 ? Math.min(100, Math.max(0, (el.scrollTop / max) * 100)) : 0
 }
 
 function scrollToTop() {
-  contentRef.value?.scrollTo({ top: 0, behavior: 'smooth' })
+  contentRef.value?.scrollTo({ top: 0, behavior: reducedMotion ? 'auto' : 'smooth' })
 }
 
+// 切换页面时让新页面从顶部开始，同时复位全局滚动反馈。
+watch(
+  () => route.path,
+  async () => {
+    await nextTick()
+    contentRef.value?.scrollTo({ top: 0, behavior: 'auto' })
+    showBackTop.value = false
+    scrollProgress.value = 0
+  }
+)
+
 onMounted(() => {
-  contentRef.value?.addEventListener('scroll', onScroll)
+  reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+  contentRef.value?.addEventListener('scroll', onScroll, { passive: true })
   initAuth()
 
   const prefetch = () => Object.values(routeComponents).forEach((load) => load())
@@ -96,6 +115,13 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="layout" :class="{ reading: isReading }">
+    <!-- 缓慢漂浮的静态环境装饰，不响应鼠标，避免干扰阅读 -->
+    <div class="ambient-scene" aria-hidden="true">
+      <span class="ambient-orb orb-one"></span>
+      <span class="ambient-orb orb-two"></span>
+      <span class="ambient-orb orb-three"></span>
+    </div>
+
     <!-- 左侧栏 -->
     <aside class="sidebar">
       <div class="brand">
@@ -199,7 +225,21 @@ onBeforeUnmount(() => {
 
     <!-- 右侧内容区 -->
     <main class="content" ref="contentRef">
-      <router-view />
+      <div
+        v-if="!isReading"
+        class="scroll-progress"
+        :class="{ visible: scrollProgress > 0 }"
+        aria-hidden="true"
+      >
+        <span :style="{ transform: `scaleX(${scrollProgress / 100})` }"></span>
+      </div>
+
+      <router-view v-slot="{ Component, route: currentRoute }">
+        <transition name="route-page" mode="out-in">
+          <component :is="Component" :key="currentRoute.path" />
+        </transition>
+      </router-view>
+
       <button
         class="back-top"
         :class="{ show: showBackTop }"
@@ -237,7 +277,60 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
+/* ===== 动态环境背景 ===== */
+.ambient-scene {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ambient-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(2px);
+  opacity: 0.42;
+  animation: orb-drift 18s ease-in-out infinite alternate;
+}
+
+.orb-one {
+  width: 280px;
+  height: 280px;
+  left: 17%;
+  top: -120px;
+  background: radial-gradient(circle at 35% 35%, rgba(125, 211, 252, 0.34), transparent 68%);
+}
+
+.orb-two {
+  width: 360px;
+  height: 360px;
+  right: -120px;
+  bottom: -150px;
+  background: radial-gradient(circle at 35% 35%, rgba(99, 102, 241, 0.2), transparent 68%);
+  animation-delay: -7s;
+  animation-duration: 22s;
+}
+
+.orb-three {
+  width: 190px;
+  height: 190px;
+  left: 48%;
+  bottom: 6%;
+  background: radial-gradient(circle at 35% 35%, rgba(56, 189, 248, 0.2), transparent 70%);
+  animation-delay: -12s;
+  animation-duration: 25s;
+}
+
+@keyframes orb-drift {
+  0% { transform: translate3d(-14px, -8px, 0) scale(0.96); }
+  50% { transform: translate3d(24px, 18px, 0) scale(1.04); }
+  100% { transform: translate3d(-4px, 42px, 0) scale(1); }
+}
+
 .sidebar {
+  position: relative;
+  z-index: 2;
   width: var(--sidebar-width);
   flex-shrink: 0;
   background: rgba(226, 238, 252, 0.7);
@@ -507,7 +600,51 @@ onBeforeUnmount(() => {
   flex: 1;
   overflow-y: auto;
   position: relative;
+  z-index: 1;
   background: transparent;
+}
+
+/* 页面切换：短距离淡入，避免突兀，同时不拖慢导航 */
+.route-page-enter-active,
+.route-page-leave-active {
+  transition: opacity 0.24s ease, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), filter 0.24s ease;
+}
+
+.route-page-enter-from {
+  opacity: 0;
+  transform: translateY(12px) scale(0.995);
+  filter: blur(3px);
+}
+
+.route-page-leave-to {
+  opacity: 0;
+  transform: translateY(-5px) scale(0.998);
+  filter: blur(2px);
+}
+
+.scroll-progress {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  width: 100%;
+  height: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.scroll-progress.visible {
+  opacity: 1;
+}
+
+.scroll-progress span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: left center;
+  background: linear-gradient(90deg, #60a5fa, #2563eb, #7c3aed);
+  box-shadow: 0 0 10px rgba(37, 99, 235, 0.45);
+  transition: transform 0.08s linear;
 }
 
 /* 回到顶部按钮：固定在内容区右下角，滚动超过阈值时淡入 */

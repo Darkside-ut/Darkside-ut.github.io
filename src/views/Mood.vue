@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import PageBack from '../components/PageBack.vue'
 
 // 五种情绪状态：CSS 变量驱动配色（背景 / 圆环发光 / 文字色）
@@ -73,7 +73,8 @@ function loadHistory() {
 }
 
 const currentKey = ref(localStorage.getItem(CURRENT_KEY) || 'creating')
-const current = computed(() => moods.find((m) => m.key === currentKey.value))
+const current = computed(() => moods.find((m) => m.key === currentKey.value) || moods[0])
+const currentIndex = computed(() => moods.findIndex((m) => m.key === currentKey.value))
 const history = ref(loadHistory())
 
 function moodColor(key) {
@@ -82,12 +83,45 @@ function moodColor(key) {
 }
 
 function select(key) {
+  if (key === currentKey.value) return
   currentKey.value = key
   localStorage.setItem(CURRENT_KEY, key)
   history.value.push({ key, time: Date.now() })
   if (history.value.length > 48) history.value = history.value.slice(-48)
   localStorage.setItem(HISTORY_KEY, JSON.stringify(history.value))
 }
+
+function selectOffset(offset) {
+  const index = (currentIndex.value + offset + moods.length) % moods.length
+  select(moods[index].key)
+}
+
+function clearHistory() {
+  history.value = []
+  localStorage.removeItem(HISTORY_KEY)
+}
+
+function historyTitle(item) {
+  const mood = moods.find((m) => m.key === item.key)
+  const time = new Date(item.time).toLocaleString('zh-CN', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+  return `${mood?.label || '状态'} · ${time}`
+}
+
+function onKeydown(event) {
+  const tag = (event.target?.tagName || '').toLowerCase()
+  if (tag === 'input' || tag === 'textarea') return
+  if (event.key === 'ArrowLeft') selectOffset(-1)
+  else if (event.key === 'ArrowRight') selectOffset(1)
+  else if (/^[1-5]$/.test(event.key)) select(moods[Number(event.key) - 1].key)
+}
+
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 // 圆环：背景色 + 多层光晕，随心情平滑过渡
 const orbStyle = computed(() => ({
@@ -102,36 +136,64 @@ const orbStyle = computed(() => ({
 
     <div class="mood-inner">
       <div class="orb-wrap">
-        <div class="orb" :style="orbStyle">
-          <span class="orb-emoji">{{ current.emoji }}</span>
-        </div>
-      </div>
-
-      <h2 class="mood-label" :style="{ color: current.text }">{{ current.label }}</h2>
-      <p class="mood-desc" :style="{ color: current.sub }">{{ current.desc }}</p>
-
-      <div class="dots">
         <button
-          v-for="m in moods"
-          :key="m.key"
-          class="dot"
-          :class="{ active: m.key === currentKey }"
-          :style="{ backgroundColor: m.orb, '--dot': m.orb }"
-          :title="m.label"
-          :aria-label="m.label"
-          @click="select(m.key)"
-        ></button>
+          class="orb"
+          :style="orbStyle"
+          type="button"
+          aria-label="切换到下一个状态"
+          title="点击切换下一个状态"
+          @click="selectOffset(1)"
+        >
+          <transition name="emoji-pop" mode="out-in">
+            <span :key="currentKey" class="orb-emoji">{{ current.emoji }}</span>
+          </transition>
+          <span class="orb-ring ring-one"></span>
+          <span class="orb-ring ring-two"></span>
+        </button>
       </div>
+
+      <transition name="label-shift" mode="out-in">
+        <div :key="currentKey" class="mood-copy">
+          <h2 class="mood-label" :style="{ color: current.text }">{{ current.label }}</h2>
+          <p class="mood-desc" :style="{ color: current.sub }">{{ current.desc }}</p>
+        </div>
+      </transition>
+
+      <div class="mood-options" role="list" aria-label="选择当前状态">
+        <button
+          v-for="(m, index) in moods"
+          :key="m.key"
+          type="button"
+          class="mood-option"
+          :class="{ active: m.key === currentKey }"
+          :style="{ '--dot': m.orb, '--option-text': m.text }"
+          :aria-pressed="m.key === currentKey"
+          @click="select(m.key)"
+        >
+          <span class="option-emoji">{{ m.emoji }}</span>
+          <span class="option-label">{{ m.label }}</span>
+          <kbd>{{ index + 1 }}</kbd>
+        </button>
+      </div>
+
+      <p class="keyboard-hint" :style="{ color: current.sub }">← → 切换状态 · 数字 1–5 快速选择</p>
 
       <div v-if="history.length" class="history" :style="{ color: current.sub }">
-        <span class="history-label">近期状态</span>
+        <div class="history-head">
+          <span class="history-label">近期状态 · {{ history.length }}</span>
+          <button type="button" class="history-clear" @click="clearHistory">清空</button>
+        </div>
         <span class="history-dots">
-          <span
+          <button
             v-for="(h, i) in history.slice(-18)"
-            :key="i"
+            :key="`${h.time}-${i}`"
+            type="button"
             class="h-dot"
             :style="{ backgroundColor: moodColor(h.key) }"
-          ></span>
+            :title="historyTitle(h)"
+            :aria-label="historyTitle(h)"
+            @click="select(h.key)"
+          ></button>
         </span>
       </div>
     </div>
@@ -179,13 +241,23 @@ const orbStyle = computed(() => ({
   position: relative;
   width: 100%;
   height: 100%;
+  padding: 0;
+  border: none;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: background-color 800ms cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 800ms cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow 800ms cubic-bezier(0.4, 0, 0.2, 1), transform 0.28s ease;
   animation: breathe 5.5s ease-in-out infinite;
+}
+
+.orb:hover {
+  transform: scale(1.025);
+}
+
+.orb:active {
+  transform: scale(0.98);
 }
 
 /* 多层渐变：高光 + 暗部，营造球体质感 */
@@ -202,8 +274,59 @@ const orbStyle = computed(() => ({
 .orb-emoji {
   font-size: 4.2rem;
   position: relative;
-  z-index: 1;
+  z-index: 2;
   filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.18));
+}
+
+.orb-ring {
+  position: absolute;
+  inset: -14px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  opacity: 0.13;
+  animation: ring-expand 3.2s ease-out infinite;
+}
+
+.ring-two {
+  animation-delay: 1.6s;
+}
+
+.emoji-pop-enter-active,
+.emoji-pop-leave-active,
+.label-shift-enter-active,
+.label-shift-leave-active {
+  transition: opacity 0.3s ease, transform 0.38s cubic-bezier(0.16, 1, 0.3, 1), filter 0.3s ease;
+}
+
+.emoji-pop-enter-from {
+  opacity: 0;
+  transform: scale(0.5) rotate(-18deg);
+  filter: blur(4px);
+}
+
+.emoji-pop-leave-to {
+  opacity: 0;
+  transform: scale(1.35) rotate(12deg);
+  filter: blur(4px);
+}
+
+.label-shift-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.label-shift-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+.mood-copy {
+  min-height: 78px;
+}
+
+@keyframes ring-expand {
+  0% { opacity: 0.18; transform: scale(0.9); }
+  75%, 100% { opacity: 0; transform: scale(1.16); }
 }
 
 @keyframes breathe {
@@ -230,66 +353,144 @@ const orbStyle = computed(() => ({
   transition: color 800ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* ===== 底部状态点 ===== */
-.dots {
+/* ===== 状态选择器 ===== */
+.mood-options {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(82px, 1fr));
+  gap: 0.55rem;
+  margin-top: 2.4rem;
+}
+
+.mood-option {
+  position: relative;
+  min-width: 0;
   display: flex;
-  gap: 1.2rem;
-  margin-top: 3.2rem;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 0.65rem;
+  color: var(--option-text);
+  background: rgba(255, 255, 255, 0.34);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 14px;
+  backdrop-filter: blur(8px);
+  opacity: 0.68;
+  transition: opacity 0.25s ease, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), background 0.25s ease, box-shadow 0.3s ease;
 }
 
-.dot {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  opacity: 0.4;
-  transform: scale(0.85);
-  transition: opacity 800ms cubic-bezier(0.4, 0, 0.2, 1),
-    transform 800ms cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 800ms cubic-bezier(0.4, 0, 0.2, 1);
+.mood-option::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 20%;
+  bottom: 20%;
+  width: 3px;
+  border-radius: 4px;
+  background: var(--dot);
+  transform: scaleY(0);
+  transition: transform 0.25s ease;
 }
 
-.dot:hover {
-  opacity: 0.7;
-}
-
-.dot.active {
+.mood-option:hover {
   opacity: 1;
-  transform: scale(1.28);
-  box-shadow: 0 0 14px var(--dot);
+  transform: translateY(-3px);
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.mood-option.active {
+  opacity: 1;
+  transform: translateY(-4px);
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: 0 10px 25px -16px var(--dot);
+}
+
+.mood-option.active::before {
+  transform: scaleY(1);
+}
+
+.option-emoji {
+  font-size: 1rem;
+}
+
+.option-label {
+  min-width: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.mood-option kbd {
+  margin-left: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.56rem;
+  opacity: 0.45;
+}
+
+.keyboard-hint {
+  margin-top: 0.8rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.05em;
+  opacity: 0.75;
+  transition: color 800ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ===== 近期状态（localStorage 历史） ===== */
 .history {
-  margin-top: 2.2rem;
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
+  width: min(520px, 90vw);
+  margin-top: 1.6rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid currentColor;
   font-size: 0.72rem;
   letter-spacing: 0.08em;
+  opacity: 0.82;
   transition: color 800ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.history-label {
-  flex-shrink: 0;
+.history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.55rem;
+}
+
+.history-clear {
+  padding: 0.1rem 0.35rem;
+  color: currentColor;
+  background: transparent;
+  border: none;
+  font-size: 0.62rem;
+  opacity: 0.6;
+}
+
+.history-clear:hover {
+  opacity: 1;
 }
 
 .history-dots {
   display: flex;
-  gap: 4px;
+  justify-content: center;
+  gap: 5px;
   flex-wrap: wrap;
 }
 
 .h-dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: none;
   border-radius: 50%;
-  opacity: 0.85;
+  opacity: 0.75;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.h-dot:hover {
+  opacity: 1;
+  transform: scale(1.55);
 }
 
 @media (max-width: 640px) {
+  .mood {
+    padding: 5rem 1rem 2rem;
+  }
   .orb-wrap {
     width: 200px;
     height: 200px;
@@ -299,6 +500,22 @@ const orbStyle = computed(() => ({
   }
   .mood-label {
     font-size: 1.6rem;
+  }
+  .mood-options {
+    width: min(330px, 90vw);
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0.35rem;
+  }
+  .mood-option {
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.48rem 0.2rem;
+  }
+  .mood-option kbd {
+    display: none;
+  }
+  .option-label {
+    font-size: 0.62rem;
   }
 }
 </style>

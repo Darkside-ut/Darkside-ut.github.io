@@ -46,6 +46,7 @@ async function doImportLocal() {
 /* ---------------- 列表 / 筛选 ---------------- */
 const keyword = ref('')
 const sortBy = ref('rating')
+const activeCategory = ref('')
 
 const SORT_OPTIONS = [
   { value: 'rating', label: '按星级' },
@@ -53,9 +54,16 @@ const SORT_OPTIONS = [
   { value: 'name', label: '按名称' },
 ]
 
+const categories = computed(() =>
+  [...new Set(shops.value.map((shop) => (shop.category || '').trim()).filter(Boolean))].sort(
+    (a, b) => a.localeCompare(b, 'zh-CN')
+  )
+)
+
 const filtered = computed(() => {
   const k = keyword.value.trim().toLowerCase()
   const list = shops.value.filter((s) => {
+    if (activeCategory.value && s.category !== activeCategory.value) return false
     if (!k) return true
     if ((s.name || '').toLowerCase().includes(k)) return true
     if ((s.category || '').toLowerCase().includes(k)) return true
@@ -84,16 +92,36 @@ function rateText(shop) {
 /* ---------------- 选中店铺 ---------------- */
 const selectedId = ref('')
 const selected = computed(() => shops.value.find((s) => s.id === selectedId.value) || null)
+const dishSort = ref('rating')
+
+const DISH_SORT_OPTIONS = [
+  { value: 'rating', label: '星级最高' },
+  { value: 'recent', label: '最近记录' },
+  { value: 'name', label: '按菜名' },
+]
 
 const sortedDishes = computed(() => {
   if (!selected.value) return []
-  return [...(selected.value.dishes || [])].sort(
-    (a, b) => (b.rating || 0) - (a.rating || 0) || (b.createdAt || 0) - (a.createdAt || 0)
-  )
+  return [...(selected.value.dishes || [])].sort((a, b) => {
+    if (dishSort.value === 'recent') return (b.createdAt || 0) - (a.createdAt || 0)
+    if (dishSort.value === 'name') return a.name.localeCompare(b.name, 'zh-CN')
+    return (b.rating || 0) - (a.rating || 0) || (b.createdAt || 0) - (a.createdAt || 0)
+  })
 })
 
 function selectShop(id) {
   selectedId.value = id
+  dishSort.value = 'rating'
+}
+
+function closeDetail() {
+  selectedId.value = ''
+}
+
+function onKeydown(event) {
+  if (event.key !== 'Escape' || shopDialog.value || dishDialog.value) return
+  if (selectedId.value) closeDetail()
+  else exportOpen.value = false
 }
 
 /* ---------------- 店铺表单 ---------------- */
@@ -205,9 +233,13 @@ function onDocPointerDown(e) {
 
 onMounted(() => {
   document.addEventListener('pointerdown', onDocPointerDown)
+  window.addEventListener('keydown', onKeydown)
   initFood().catch((e) => ElMessage.error('加载数据失败：' + (e?.message || e)))
 })
-onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDown))
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', onDocPointerDown)
+  window.removeEventListener('keydown', onKeydown)
+})
 
 function dateStamp() {
   const d = new Date()
@@ -297,7 +329,8 @@ function starsText(rating) {
 
     <div class="page-card food-page">
       <!-- ===================== 店铺列表 ===================== -->
-      <template v-if="!selected">
+      <transition name="food-view" mode="out-in">
+        <section v-if="!selected" key="list" class="food-list-view">
         <div class="food-head">
           <div>
             <h2 class="page-title">美食评价</h2>
@@ -357,6 +390,26 @@ function starsText(rating) {
             </template>
           </el-input>
           <SelectMenu v-model="sortBy" :options="SORT_OPTIONS" class="sort-menu" />
+          <span class="result-count">{{ filtered.length }} 家</span>
+        </div>
+
+        <div v-if="categories.length" class="category-filter" aria-label="按店铺类型筛选">
+          <button
+            type="button"
+            :class="{ active: !activeCategory }"
+            @click="activeCategory = ''"
+          >
+            全部
+          </button>
+          <button
+            v-for="category in categories"
+            :key="category"
+            type="button"
+            :class="{ active: activeCategory === category }"
+            @click="activeCategory = activeCategory === category ? '' : category"
+          >
+            {{ category }}
+          </button>
         </div>
 
         <div v-if="loading" class="empty-wrap">
@@ -367,12 +420,13 @@ function starsText(rating) {
           <el-empty :description="keyword ? '没有匹配的店铺' : canEdit ? '还没有店铺，先添加一家吧' : '还没有店铺'" />
         </div>
 
-        <div v-else class="shop-grid">
+        <TransitionGroup v-else name="shop-list" tag="div" class="shop-grid">
           <button
-            v-for="s in filtered"
+            v-for="(s, index) in filtered"
             :key="s.id"
             type="button"
             class="shop-card"
+            :style="{ '--shop-index': index }"
             @click="selectShop(s.id)"
           >
             <div class="shop-top">
@@ -395,13 +449,13 @@ function starsText(rating) {
               <span class="enter">查看 ›</span>
             </div>
           </button>
-        </div>
-      </template>
+        </TransitionGroup>
+        </section>
 
-      <!-- ===================== 店铺详情 ===================== -->
-      <template v-else>
+        <!-- ===================== 店铺详情 ===================== -->
+        <section v-else key="detail" class="food-detail-view">
         <div class="detail-toolbar">
-          <button class="back-btn" @click="selectedId = ''">
+          <button class="back-btn" @click="closeDetail">
             <el-icon><ArrowLeft /></el-icon>
             <span>全部店铺</span>
           </button>
@@ -439,10 +493,18 @@ function starsText(rating) {
             菜品评价
             <span class="dish-count">{{ dishCount(selected) }} 道</span>
           </div>
-          <button v-if="canEdit" class="primary-btn small" @click="openDishDialog()">
-            <el-icon><Plus /></el-icon>
-            <span>添加菜品</span>
-          </button>
+          <div class="dish-head-actions">
+            <SelectMenu
+              v-if="selected.dishes?.length > 1"
+              v-model="dishSort"
+              :options="DISH_SORT_OPTIONS"
+              class="dish-sort-menu"
+            />
+            <button v-if="canEdit" class="primary-btn small" @click="openDishDialog()">
+              <el-icon><Plus /></el-icon>
+              <span>添加菜品</span>
+            </button>
+          </div>
         </div>
 
         <el-empty
@@ -450,8 +512,8 @@ function starsText(rating) {
           description="还没有菜品，记录第一道吧"
         />
 
-        <div v-else class="dish-list">
-          <div v-for="d in sortedDishes" :key="d.id" class="dish-row">
+        <TransitionGroup v-else name="dish-list" tag="div" class="dish-list">
+          <div v-for="(d, index) in sortedDishes" :key="d.id" class="dish-row" :style="{ '--dish-index': index }">
             <div class="dish-main">
               <div class="dish-title-line">
                 <span class="dish-name">{{ d.name }}</span>
@@ -469,8 +531,9 @@ function starsText(rating) {
               <button class="icon-btn danger" @click="onDeleteDish(d)">删除</button>
             </div>
           </div>
-        </div>
-      </template>
+        </TransitionGroup>
+        </section>
+      </transition>
     </div>
 
     <!-- ===================== 店铺弹窗 ===================== -->
@@ -564,6 +627,24 @@ function starsText(rating) {
 <style scoped>
 .food-page {
   max-width: 880px;
+  overflow: visible;
+}
+
+.food-view-enter-active,
+.food-view-leave-active {
+  transition: opacity 0.24s ease, transform 0.34s cubic-bezier(0.16, 1, 0.3, 1), filter 0.24s ease;
+}
+
+.food-view-enter-from {
+  opacity: 0;
+  transform: translateX(18px);
+  filter: blur(3px);
+}
+
+.food-view-leave-to {
+  opacity: 0;
+  transform: translateX(-12px);
+  filter: blur(2px);
 }
 
 /* ===== 顶部 ===== */
@@ -695,8 +776,45 @@ function starsText(rating) {
 
 .food-tools {
   display: flex;
+  align-items: center;
   gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.result-count {
+  flex-shrink: 0;
+  font-size: 0.66rem;
+  color: #91a0b8;
+}
+
+.category-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.38rem;
   margin-bottom: 1.2rem;
+}
+
+.category-filter button {
+  padding: 0.22rem 0.65rem;
+  font-size: 0.66rem;
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(192, 86, 33, 0.13);
+  border-radius: 99px;
+  transition: 0.2s ease;
+}
+
+.category-filter button:hover {
+  color: #c05621;
+  border-color: rgba(192, 86, 33, 0.35);
+  transform: translateY(-1px);
+}
+
+.category-filter button.active {
+  color: #fff;
+  background: #c05621;
+  border-color: #c05621;
+  box-shadow: 0 5px 12px -7px rgba(192, 86, 33, 0.75);
 }
 
 .search-box {
@@ -714,9 +832,30 @@ function starsText(rating) {
 
 /* ===== 店铺卡片 ===== */
 .shop-grid {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 0.9rem;
+}
+
+.shop-list-move,
+.shop-list-enter-active,
+.shop-list-leave-active {
+  transition: opacity 0.28s ease, transform 0.36s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.shop-list-enter-active {
+  transition-delay: calc(var(--shop-index, 0) * 45ms);
+}
+
+.shop-list-enter-from {
+  opacity: 0;
+  transform: translateY(12px) scale(0.97);
+}
+
+.shop-list-leave-to {
+  opacity: 0;
+  transform: scale(0.94);
 }
 
 .shop-card {
@@ -809,6 +948,15 @@ function starsText(rating) {
   margin-left: auto;
   flex-shrink: 0;
   color: #c05621;
+  transition: transform 0.22s ease;
+}
+
+.shop-card:hover .shop-foot .enter {
+  transform: translateX(4px);
+}
+
+.shop-card:active {
+  transform: translateY(-1px) scale(0.985);
 }
 
 /* ===== 详情 ===== */
@@ -918,6 +1066,16 @@ function starsText(rating) {
   color: var(--text-dark);
 }
 
+.dish-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dish-sort-menu {
+  width: 112px;
+}
+
 .dish-count {
   margin-left: 0.4rem;
   font-size: 0.66rem;
@@ -926,9 +1084,30 @@ function starsText(rating) {
 }
 
 .dish-list {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+}
+
+.dish-list-move,
+.dish-list-enter-active,
+.dish-list-leave-active {
+  transition: opacity 0.26s ease, transform 0.34s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dish-list-enter-active {
+  transition-delay: calc(var(--dish-index, 0) * 45ms);
+}
+
+.dish-list-enter-from {
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+}
+
+.dish-list-leave-to {
+  opacity: 0;
+  transform: translateX(14px) scale(0.98);
 }
 
 .dish-row {
@@ -945,6 +1124,8 @@ function starsText(rating) {
 .dish-row:hover {
   background: rgba(253, 246, 240, 0.85);
   border-color: rgba(192, 86, 33, 0.28);
+  transform: translateX(3px);
+  box-shadow: 0 8px 18px -17px rgba(150, 70, 20, 0.4);
 }
 
 .dish-main {
@@ -1155,6 +1336,13 @@ function starsText(rating) {
   }
   .dish-row {
     flex-direction: column;
+  }
+  .dish-head {
+    align-items: flex-start;
+  }
+  .dish-head-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
   .dish-actions {
     flex-direction: row;

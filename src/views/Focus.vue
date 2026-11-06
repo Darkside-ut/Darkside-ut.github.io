@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import PageBack from '../components/PageBack.vue'
 import {
   focusState,
@@ -39,6 +39,10 @@ const cups = computed(() =>
   Array.from({ length: Math.max(settings.value.waterGoal, stats.value.cups) }, (_, i) => i)
 )
 
+const waterPercent = computed(() =>
+  Math.min(100, Math.round((stats.value.cups / Math.max(1, settings.value.waterGoal)) * 100))
+)
+
 function nextText(at) {
   const ms = at - tickNow.value
   if (ms <= 0) return '即将提醒'
@@ -59,12 +63,61 @@ function setNumber(key, e, min = 1, max = 999) {
   setSetting(key, v)
 }
 
+const modes = ['focus', 'short', 'long']
+const immersive = ref(false)
+const originalTitle = typeof document === 'undefined' ? '' : document.title
+
+const phaseHint = computed(() => {
+  if (timerRunning.value) {
+    return timerMode.value === 'focus' ? '保持专注，完成眼前这一件事' : '放松一下，让注意力慢慢恢复'
+  }
+  return timerProgress.value > 0 ? '暂停中，准备好后继续' : '准备好了吗？从现在开始'
+})
+
+function toggleTimer() {
+  timerRunning.value ? pauseTimer() : startTimer()
+}
+
+function toggleImmersive() {
+  immersive.value = !immersive.value
+}
+
+function onShortcut(event) {
+  const tag = (event.target?.tagName || '').toLowerCase()
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return
+  if (eyeResting.value > 0 && event.key !== 'Escape') return
+
+  if (event.code === 'Space') {
+    event.preventDefault()
+    toggleTimer()
+  } else if (event.key.toLowerCase() === 'r') {
+    event.preventDefault()
+    resetTimer()
+  } else if (event.key.toLowerCase() === 's') {
+    event.preventDefault()
+    skipTimer()
+  } else if (event.key.toLowerCase() === 'f') {
+    event.preventDefault()
+    toggleImmersive()
+  } else if (event.key === 'Escape' && immersive.value) {
+    immersive.value = false
+  }
+}
+
+watch([timerText, timerRunning], ([text, running]) => {
+  document.title = running ? `${text} · ${TIMER_MODE_LABEL[timerMode.value]}` : originalTitle
+})
+
 onMounted(() => {
   // 通知权限可能在别处已变更
   permission.value = notifyPermission()
+  window.addEventListener('keydown', onShortcut)
 })
 
-const modes = ['focus', 'short', 'long']
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onShortcut)
+  document.title = originalTitle
+})
 </script>
 
 <template>
@@ -76,7 +129,12 @@ const modes = ['focus', 'short', 'long']
       <div class="section-sub">番茄钟 · 喝水提醒 · 护眼提醒</div>
 
       <!-- ===== 番茄钟 ===== -->
-      <div class="timer-card">
+      <div class="timer-card" :class="{ running: timerRunning }">
+        <div class="timer-status" :class="{ active: timerRunning }">
+          <span class="status-dot"></span>
+          <span>{{ timerRunning ? '专注进行中' : '计时器已就绪' }}</span>
+          <span class="shortcut-tip">空格 开始/暂停 · F 沉浸</span>
+        </div>
         <div class="mode-tabs">
           <button
             v-for="m in modes"
@@ -105,15 +163,18 @@ const modes = ['focus', 'short', 'long']
           <div class="ring-center">
             <div class="time">{{ timerText }}</div>
             <div class="mode-label">{{ TIMER_MODE_LABEL[timerMode] }}</div>
+            <div class="phase-hint">{{ phaseHint }}</div>
           </div>
         </div>
 
         <div class="timer-controls">
-          <button class="primary-btn" @click="timerRunning ? pauseTimer() : startTimer()">
+          <button class="primary-btn main-control" @click="toggleTimer">
+            <span class="control-icon">{{ timerRunning ? 'Ⅱ' : '▶' }}</span>
             {{ timerRunning ? '暂停' : '开始' }}
           </button>
-          <button class="ghost-btn" @click="resetTimer">重置</button>
-          <button class="ghost-btn" @click="skipTimer">跳过</button>
+          <button class="ghost-btn" title="快捷键 R" @click="resetTimer">重置</button>
+          <button class="ghost-btn" title="快捷键 S" @click="skipTimer">跳过</button>
+          <button class="ghost-btn immersive-btn" title="快捷键 F" @click="toggleImmersive">沉浸模式</button>
         </div>
 
         <div class="timer-stats">
@@ -164,6 +225,9 @@ const modes = ['focus', 'short', 'long']
           <div class="rc-meta">
             {{ stats.cups }} / {{ settings.waterGoal }} 杯
             <span v-if="settings.waterEnabled">· 下次 {{ waterNextText }}</span>
+          </div>
+          <div class="water-track" aria-hidden="true">
+            <span :style="{ transform: `scaleX(${waterPercent / 100})` }"></span>
           </div>
 
           <div class="rc-actions">
@@ -293,6 +357,36 @@ const modes = ['focus', 'short', 'long']
         <button class="ghost-btn" @click="stopEyeRest">结束休息</button>
       </div>
     </teleport>
+
+    <!-- ===== 沉浸模式 ===== -->
+    <teleport to="body">
+      <transition name="immersive-fade">
+        <div v-if="immersive" class="immersive-overlay" :class="timerMode">
+          <div class="immersive-grid" aria-hidden="true"></div>
+          <button class="immersive-close" aria-label="退出沉浸模式" @click="immersive = false">×</button>
+          <div class="immersive-content">
+            <span class="immersive-eyebrow">
+              <i :class="{ active: timerRunning }"></i>
+              {{ timerRunning ? 'FOCUS SESSION' : 'READY' }}
+            </span>
+            <div class="immersive-time">{{ timerText }}</div>
+            <div class="immersive-mode">{{ TIMER_MODE_LABEL[timerMode] }}</div>
+            <p>{{ phaseHint }}</p>
+            <div class="immersive-progress">
+              <span :style="{ transform: `scaleX(${timerProgress})` }"></span>
+            </div>
+            <div class="immersive-actions">
+              <button class="immersive-primary" @click="toggleTimer">
+                {{ timerRunning ? '暂停计时' : '开始计时' }}
+              </button>
+              <button @click="resetTimer">重置</button>
+              <button @click="skipTimer">跳过</button>
+            </div>
+            <div class="immersive-shortcuts">Space 开始/暂停 · R 重置 · S 跳过 · Esc 退出</div>
+          </div>
+        </div>
+      </transition>
+    </teleport>
   </div>
 </template>
 
@@ -303,6 +397,8 @@ const modes = ['focus', 'short', 'long']
 
 /* ===== 番茄钟 ===== */
 .timer-card {
+  position: relative;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -311,6 +407,46 @@ const modes = ['focus', 'short', 'long']
   border-radius: 20px;
   background: rgba(245, 249, 255, 0.62);
   border: 1px solid rgba(37, 99, 235, 0.12);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
+}
+
+.timer-card.running {
+  border-color: rgba(37, 99, 235, 0.3);
+  background: rgba(240, 247, 255, 0.82);
+  box-shadow: 0 16px 32px -26px rgba(37, 99, 235, 0.58);
+}
+
+.timer-status {
+  width: calc(100% - 2rem);
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.7rem;
+  font-size: 0.64rem;
+  color: #8796ae;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #94a3b8;
+  transition: 0.3s ease;
+}
+
+.timer-status.active {
+  color: var(--accent);
+}
+
+.timer-status.active .status-dot {
+  background: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12), 0 0 12px rgba(34, 197, 94, 0.55);
+  animation: status-pulse 1.8s ease-in-out infinite;
+}
+
+.shortcut-tip {
+  margin-left: auto;
+  opacity: 0.68;
 }
 
 .mode-tabs {
@@ -344,6 +480,11 @@ const modes = ['focus', 'short', 'long']
   position: relative;
   width: 230px;
   height: 230px;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.timer-card.running .ring-wrap {
+  animation: timer-breathe 4s ease-in-out infinite;
 }
 
 .ring {
@@ -398,10 +539,34 @@ const modes = ['focus', 'short', 'long']
   color: var(--text-dim);
 }
 
+.phase-hint {
+  max-width: 145px;
+  margin-top: 0.45rem;
+  text-align: center;
+  font-size: 0.62rem;
+  line-height: 1.45;
+  color: #8b9ab2;
+}
+
 .timer-controls {
   display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
   gap: 0.55rem;
   margin-top: 1rem;
+}
+
+.main-control {
+  min-width: 92px;
+}
+
+.control-icon {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.65rem;
+}
+
+.immersive-btn {
+  border-style: dashed !important;
 }
 
 .timer-stats {
@@ -443,6 +608,13 @@ const modes = ['focus', 'short', 'long']
   border-radius: 16px;
   background: rgba(245, 249, 255, 0.62);
   border: 1px solid rgba(37, 99, 235, 0.12);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease, box-shadow 0.28s ease;
+}
+
+.reminder-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(37, 99, 235, 0.26);
+  box-shadow: 0 12px 24px -22px rgba(30, 64, 175, 0.5);
 }
 
 .rc-head {
@@ -521,6 +693,25 @@ const modes = ['focus', 'short', 'long']
 
 .cup.filled {
   opacity: 1;
+  animation: cup-pop 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.water-track {
+  height: 5px;
+  margin-top: 0.45rem;
+  overflow: hidden;
+  background: rgba(56, 189, 248, 0.12);
+  border-radius: 99px;
+}
+
+.water-track span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: left;
+  background: linear-gradient(90deg, #7dd3fc, #0ea5e9);
+  border-radius: inherit;
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .rc-meta {
@@ -673,6 +864,197 @@ const modes = ['focus', 'short', 'long']
   to {
     opacity: 1;
   }
+}
+
+/* ===== 沉浸模式 ===== */
+.immersive-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: #eff6ff;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(37, 99, 235, 0.34), transparent 38%),
+    linear-gradient(145deg, #071225, #102b5c 58%, #0b1b36);
+}
+
+.immersive-overlay.short {
+  background:
+    radial-gradient(circle at 50% 42%, rgba(52, 168, 108, 0.28), transparent 38%),
+    linear-gradient(145deg, #071b18, #104435 58%, #092720);
+}
+
+.immersive-overlay.long {
+  background:
+    radial-gradient(circle at 50% 42%, rgba(139, 92, 246, 0.3), transparent 38%),
+    linear-gradient(145deg, #140b2e, #35206b 58%, #1c103d);
+}
+
+.immersive-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.3;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(circle at center, #000 12%, transparent 75%);
+}
+
+.immersive-close {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.8rem;
+  z-index: 2;
+  width: 38px;
+  height: 38px;
+  color: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  font-size: 1.25rem;
+  transition: 0.22s ease;
+}
+
+.immersive-close:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.16);
+  transform: rotate(8deg);
+}
+
+.immersive-content {
+  position: relative;
+  z-index: 1;
+  width: min(620px, calc(100vw - 2rem));
+  text-align: center;
+}
+
+.immersive-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.64rem;
+  letter-spacing: 0.24em;
+  color: rgba(219, 234, 254, 0.65);
+}
+
+.immersive-eyebrow i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+
+.immersive-eyebrow i.active {
+  background: #4ade80;
+  box-shadow: 0 0 14px rgba(74, 222, 128, 0.8);
+  animation: status-pulse 1.8s ease-in-out infinite;
+}
+
+.immersive-time {
+  margin-top: 1rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: clamp(4.8rem, 16vw, 9.5rem);
+  font-weight: 300;
+  line-height: 1;
+  letter-spacing: -0.07em;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 45px rgba(96, 165, 250, 0.34);
+}
+
+.immersive-mode {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+}
+
+.immersive-content p {
+  margin-top: 0.7rem;
+  font-size: 0.74rem;
+  color: rgba(219, 234, 254, 0.65);
+}
+
+.immersive-progress {
+  height: 3px;
+  margin: 2rem auto 0;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 99px;
+}
+
+.immersive-progress span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: left;
+  background: linear-gradient(90deg, #7dd3fc, #fff);
+  box-shadow: 0 0 14px rgba(125, 211, 252, 0.65);
+  transition: transform 0.6s linear;
+}
+
+.immersive-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 1.5rem;
+}
+
+.immersive-actions button {
+  min-width: 82px;
+  padding: 0.55rem 1rem;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 11px;
+  transition: 0.22s ease;
+}
+
+.immersive-actions button:hover {
+  background: rgba(255, 255, 255, 0.16);
+  transform: translateY(-2px);
+}
+
+.immersive-actions .immersive-primary {
+  color: #102b5c;
+  background: rgba(255, 255, 255, 0.94);
+  border-color: transparent;
+  font-weight: 700;
+}
+
+.immersive-shortcuts {
+  margin-top: 2rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.6rem;
+  color: rgba(219, 234, 254, 0.42);
+}
+
+.immersive-fade-enter-active,
+.immersive-fade-leave-active {
+  transition: opacity 0.35s ease, filter 0.35s ease;
+}
+
+.immersive-fade-enter-from,
+.immersive-fade-leave-to {
+  opacity: 0;
+  filter: blur(10px);
+}
+
+@keyframes status-pulse {
+  50% { opacity: 0.55; transform: scale(0.84); }
+}
+
+@keyframes timer-breathe {
+  50% { transform: scale(1.018); }
+}
+
+@keyframes cup-pop {
+  from { transform: translateY(4px) scale(0.72); }
+  to { transform: translateY(0) scale(1); }
 }
 
 /* ===== 响应式 ===== */

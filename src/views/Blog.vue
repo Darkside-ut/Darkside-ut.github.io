@@ -164,21 +164,24 @@ const filtered = computed(() => {
         :description="keyword || activeTag ? '没有找到相关内容' : `还没有${activeMeta.label}`"
       />
 
-      <router-link
-        v-for="p in filtered"
-        :key="p.slug"
-        :to="'/blog/' + p.slug"
-        class="post-card"
-      >
-        <div class="post-date">{{ p.date }}</div>
-        <h3>{{ p.title }}</h3>
-        <p v-if="p.summary" class="summary">{{ p.summary }}</p>
-        <div v-if="p.tags && p.tags.length" class="post-tags">
-          <el-tag v-for="t in p.tags" :key="t" size="small" type="info" effect="plain">
-            {{ t }}
-          </el-tag>
-        </div>
-      </router-link>
+      <TransitionGroup name="post-list" tag="div" class="post-list">
+        <router-link
+          v-for="(p, index) in filtered"
+          :key="p.slug"
+          :to="'/blog/' + p.slug"
+          class="post-card"
+          :style="{ '--post-index': index }"
+        >
+          <div class="post-date">{{ p.date }}</div>
+          <h3>{{ p.title }}</h3>
+          <p v-if="p.summary" class="summary">{{ p.summary }}</p>
+          <div v-if="p.tags && p.tags.length" class="post-tags">
+            <el-tag v-for="t in p.tags" :key="t" size="small" type="info" effect="plain">
+              {{ t }}
+            </el-tag>
+          </div>
+        </router-link>
+      </TransitionGroup>
     </div>
   </div>
 </template>
@@ -358,8 +361,39 @@ const filtered = computed(() => {
   cursor: url('/cursor/pointer.cur'), pointer;
 }
 
+.post-list {
+  position: relative;
+}
+
+.post-list-move,
+.post-list-enter-active,
+.post-list-leave-active {
+  transition: opacity 0.28s ease, transform 0.34s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.post-list-enter-active {
+  transition-delay: calc(var(--post-index, 0) * 35ms);
+}
+
+.post-list-enter-from {
+  opacity: 0;
+  transform: translateY(12px) scale(0.985);
+}
+
+.post-list-leave-to {
+  opacity: 0;
+  transform: translateX(12px) scale(0.985);
+}
+
+.post-list-leave-active {
+  position: absolute;
+  width: 100%;
+}
+
 .post-card {
+  position: relative;
   display: block;
+  overflow: hidden;
   text-decoration: none;
   background: rgba(245, 249, 255, 0.7);
   backdrop-filter: blur(8px);
@@ -370,10 +404,29 @@ const filtered = computed(() => {
   margin-bottom: 1rem;
 }
 
+.post-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 18%;
+  bottom: 18%;
+  width: 3px;
+  border-radius: 0 4px 4px 0;
+  background: linear-gradient(#60a5fa, #2563eb);
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 .post-card:hover {
   border-color: var(--accent);
   background: rgba(37, 99, 235, 0.12);
-  transform: translateY(-2px);
+  transform: translateY(-3px) translateX(2px);
+  box-shadow: 0 14px 26px -22px rgba(30, 64, 175, 0.52);
+}
+
+.post-card:hover::before {
+  transform: scaleY(1);
 }
 
 .post-date {

@@ -51,6 +51,10 @@ const wordFilter = ref('all')
 const selectedKeys = ref(new Set())
 const visibleCount = ref(100)
 const dragOver = ref(false)
+const grading = ref(false)
+const gradeMotion = ref('')
+const speaking = ref(false)
+let gradingTimer = null
 
 const statusLabel = {
   new: '未学',
@@ -121,6 +125,12 @@ const grades = [
 ]
 
 const card = computed(() => currentItem.value?.w || null)
+
+const sessionPercent = computed(() => {
+  const total = session.value.queue.length
+  if (!total) return 0
+  return Math.min(100, Math.round((session.value.index / total) * 100))
+})
 
 const phoneticText = computed(() => {
   if (!card.value) return ''
@@ -224,6 +234,9 @@ function speak(text) {
     voices.find((v) => (v.lang || '').toLowerCase().startsWith('en'))
   if (match) u.voice = match
   u.rate = 1
+  u.onstart = () => (speaking.value = true)
+  u.onend = () => (speaking.value = false)
+  u.onerror = () => (speaking.value = false)
   synth.speak(u)
 }
 
@@ -243,8 +256,16 @@ function warmUpSpeech() {
 }
 
 function pick(g) {
-  if (!flipped.value) return
-  gradeCurrent(g)
+  if (!flipped.value || grading.value) return
+  const grade = grades.find((item) => item.g === g)
+  grading.value = true
+  gradeMotion.value = grade?.cls || 'good'
+  gradingTimer = setTimeout(() => {
+    gradeCurrent(g)
+    grading.value = false
+    gradeMotion.value = ''
+    gradingTimer = null
+  }, 260)
 }
 
 function onKey(e) {
@@ -441,6 +462,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKey)
   stopCreep()
+  if (gradingTimer) clearTimeout(gradingTimer)
+  if (window.speechSynthesis?.speaking) window.speechSynthesis.cancel()
 })
 </script>
 
@@ -505,9 +528,10 @@ onBeforeUnmount(() => {
 
           <div class="lib-grid">
             <button
-              v-for="l in libraries"
+              v-for="(l, index) in libraries"
               :key="l.id"
               class="lib-card"
+              :style="{ '--lib-index': index }"
               @click="openLibrary(l.id)"
             >
               <div class="lib-cover">{{ l.name.slice(0, 1) }}</div>
@@ -569,8 +593,18 @@ onBeforeUnmount(() => {
 
         <!-- ===== 学习区 ===== -->
         <div v-if="!session.finished && card" class="study">
-          <div class="card-wrap">
-            <div class="flashcard" :class="{ flipped }" @click="flipped = !flipped">
+          <div class="session-progress">
+            <div class="session-progress-head">
+              <span>本组进度</span>
+              <strong>{{ session.index }} / {{ session.queue.length }}</strong>
+            </div>
+            <div class="session-track" aria-hidden="true">
+              <span :style="{ transform: `scaleX(${sessionPercent / 100})` }"></span>
+            </div>
+          </div>
+
+          <div class="card-wrap" :class="grading ? `grading-${gradeMotion}` : ''">
+            <div :key="card.id" class="flashcard" :class="{ flipped }" @click="!grading && (flipped = !flipped)">
               <!-- 正面 -->
               <div class="face front">
                 <span class="card-index">{{ session.index + 1 }} / {{ session.queue.length }}</span>
@@ -579,7 +613,7 @@ onBeforeUnmount(() => {
                   <!-- 左侧占位与按钮等宽，让音标相对单词真正居中 -->
                   <span class="speak-spacer" aria-hidden="true"></span>
                   <span v-if="phoneticText" class="phonetic-text">{{ phoneticText }}</span>
-                  <button class="speak-btn" @click.stop="speak(card.word)" title="发音">🔊</button>
+                  <button class="speak-btn" :class="{ speaking }" @click.stop="speak(card.word)" title="发音" aria-label="朗读单词">🔊</button>
                 </div>
                 <span class="flip-hint">点击或按空格翻面</span>
               </div>
@@ -609,8 +643,8 @@ onBeforeUnmount(() => {
               v-for="g in grades"
               :key="g.g"
               class="grade"
-              :class="[g.cls, { dim: !flipped }]"
-              :disabled="!flipped"
+              :class="[g.cls, { dim: !flipped, chosen: grading && gradeMotion === g.cls }]"
+              :disabled="!flipped || grading"
               @click="pick(g.g)"
             >
               <span class="grade-label">{{ g.label }}</span>
@@ -1160,6 +1194,7 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(37, 99, 235, 0.14);
   border-radius: 16px;
   transition: 0.22s;
+  animation: lib-rise 0.42s calc(var(--lib-index, 0) * 50ms) cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .lib-card:hover {
@@ -1342,9 +1377,60 @@ onBeforeUnmount(() => {
   margin-bottom: 1.2rem;
 }
 
+.session-progress {
+  margin-bottom: 0.75rem;
+  padding: 0 0.15rem;
+}
+
+.session-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.35rem;
+  font-size: 0.65rem;
+  color: var(--text-dim);
+}
+
+.session-progress-head strong {
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.session-track {
+  height: 5px;
+  overflow: hidden;
+  background: rgba(37, 99, 235, 0.1);
+  border-radius: 99px;
+}
+
+.session-track span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: left;
+  background: linear-gradient(90deg, #60a5fa, #2563eb, #7c3aed);
+  border-radius: inherit;
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 .card-wrap {
   perspective: 1400px;
   margin-bottom: 1rem;
+  transition: opacity 0.24s ease, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), filter 0.24s ease;
+}
+
+.card-wrap.grading-again,
+.card-wrap.grading-hard {
+  opacity: 0;
+  transform: translateX(-28px) rotate(-1deg) scale(0.97);
+  filter: blur(2px);
+}
+
+.card-wrap.grading-good,
+.card-wrap.grading-easy {
+  opacity: 0;
+  transform: translateX(28px) rotate(1deg) scale(0.97);
+  filter: blur(2px);
 }
 
 .flashcard {
@@ -1460,6 +1546,13 @@ onBeforeUnmount(() => {
 
 .speak-btn:hover {
   background: rgba(37, 99, 235, 0.22);
+  transform: scale(1.08);
+}
+
+.speak-btn.speaking {
+  color: #fff;
+  background: var(--accent);
+  animation: speaking-pulse 0.9s ease-in-out infinite;
 }
 
 .flip-hint {
@@ -1553,6 +1646,12 @@ onBeforeUnmount(() => {
 .grade:hover:not(:disabled) {
   transform: translateY(-2px);
   box-shadow: 0 8px 18px -8px rgba(30, 60, 110, 0.4);
+}
+
+.grade.chosen {
+  opacity: 1 !important;
+  transform: translateY(-3px) scale(1.06);
+  box-shadow: 0 10px 22px -9px rgba(30, 60, 110, 0.55);
 }
 
 .grade.dim {
@@ -1927,6 +2026,15 @@ onBeforeUnmount(() => {
 
 .primary-btn.full {
   width: 100%;
+}
+
+@keyframes speaking-pulse {
+  50% { transform: scale(1.12); box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.12); }
+}
+
+@keyframes lib-rise {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 /* ===== 响应式 ===== */
