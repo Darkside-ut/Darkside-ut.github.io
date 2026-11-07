@@ -271,7 +271,7 @@ function pick(g) {
 function onKey(e) {
   if (mode.value !== 'books' || !card.value || showImport.value) return
   const tag = (e.target?.tagName || '').toLowerCase()
-  if (tag === 'input' || tag === 'textarea' || tag === 'select') return
+  if (['input', 'textarea', 'select', 'button', 'a'].includes(tag) || e.target?.isContentEditable) return
   if (e.code === 'Space') {
     e.preventDefault()
     if (card.value) flipped.value = !flipped.value

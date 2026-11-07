@@ -156,7 +156,7 @@ async function jumpToForm() {
 
 function onCalendarKeydown(event) {
   const tag = (event.target?.tagName || '').toLowerCase()
-  if (tag === 'input' || tag === 'textarea' || tag === 'select') return
+  if (['input', 'textarea', 'select', 'button', 'a'].includes(tag) || event.target?.isContentEditable) return
   if (event.key === 'PageUp') {
     event.preventDefault()
     prevMonth()
@@ -784,8 +784,8 @@ const selectedDoneCount = computed(
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  max-height: 300px;
-  overflow-y: auto;
+  max-height: none;
+  overflow: visible;
   margin-bottom: 1rem;
   padding-right: 2px;
 }
@@ -830,7 +830,6 @@ const selectedDoneCount = computed(
 
 .event:hover {
   background: rgba(255, 255, 255, 0.9);
-  transform: translateX(3px);
   box-shadow: 0 8px 18px -16px rgba(30, 64, 175, 0.45);
 }
 
@@ -1107,7 +1106,8 @@ const selectedDoneCount = computed(
     padding-top: 1.2rem;
   }
   .day-list {
-    max-height: 220px;
+    max-height: none;
+    overflow: visible;
   }
 }
 

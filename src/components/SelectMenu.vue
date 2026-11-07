@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 
 const props = defineProps({
   modelValue: { type: [String, Number], default: '' },
@@ -12,28 +12,83 @@ const emit = defineEmits(['update:modelValue', 'change'])
 
 const open = ref(false)
 const root = ref(null)
+const trigger = ref(null)
+const optionEls = ref([])
+const activeIndex = ref(-1)
 
 const current = computed(
   () => props.options.find((o) => o.value === props.modelValue) || null
 )
 
-function toggle() {
+function focusAt(index) {
+  if (!props.options.length) return
+  activeIndex.value = (index + props.options.length) % props.options.length
+  nextTick(() => optionEls.value[activeIndex.value]?.focus())
+}
+
+function openMenu(preferredIndex) {
   if (props.disabled) return
-  open.value = !open.value
+  open.value = true
+  const selected = props.options.findIndex((o) => o.value === props.modelValue)
+  focusAt(preferredIndex ?? (selected >= 0 ? selected : 0))
+}
+
+function closeMenu(restoreFocus = false) {
+  open.value = false
+  activeIndex.value = -1
+  if (restoreFocus) nextTick(() => trigger.value?.focus())
+}
+
+function toggle() {
+  open.value ? closeMenu() : openMenu()
 }
 
 function choose(opt) {
   emit('update:modelValue', opt.value)
   emit('change', opt.value)
-  open.value = false
+  closeMenu(true)
+}
+
+function onTriggerKey(e) {
+  if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault()
+    open.value ? focusAt(activeIndex.value + 1) : openMenu()
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    open.value ? focusAt(activeIndex.value - 1) : openMenu(props.options.length - 1)
+  }
+}
+
+function onOptionKey(e, index, opt) {
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    focusAt(index + 1)
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    focusAt(index - 1)
+  } else if (e.key === 'Home') {
+    e.preventDefault()
+    focusAt(0)
+  } else if (e.key === 'End') {
+    e.preventDefault()
+    focusAt(props.options.length - 1)
+  } else if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault()
+    choose(opt)
+  } else if (e.key === 'Tab') {
+    closeMenu()
+  }
 }
 
 function onClickOutside(e) {
-  if (root.value && !root.value.contains(e.target)) open.value = false
+  if (root.value && !root.value.contains(e.target)) closeMenu()
 }
 
 function onKey(e) {
-  if (e.key === 'Escape') open.value = false
+  if (e.key === 'Escape' && open.value) {
+    e.preventDefault()
+    closeMenu(true)
+  }
 }
 
 onMounted(() => {
@@ -50,12 +105,14 @@ onBeforeUnmount(() => {
 <template>
   <div class="select-menu" :class="{ open, disabled }" ref="root">
     <button
+      ref="trigger"
       type="button"
       class="sm-btn"
       :disabled="disabled"
       aria-haspopup="listbox"
       :aria-expanded="open"
       @click="toggle"
+      @keydown="onTriggerKey"
     >
       <span class="sm-text">{{ current ? current.label : placeholder }}</span>
       <span class="sm-arrow" aria-hidden="true">
@@ -75,13 +132,18 @@ onBeforeUnmount(() => {
     <transition name="sm-pop">
       <div v-if="open" class="sm-pop" role="listbox">
         <button
-          v-for="opt in options"
+          v-for="(opt, index) in options"
           :key="opt.value"
+          ref="optionEls"
           type="button"
           class="sm-opt"
-          :class="{ active: opt.value === modelValue }"
+          :class="{ active: opt.value === modelValue, focused: index === activeIndex }"
+          :tabindex="index === activeIndex ? 0 : -1"
           role="option"
           :aria-selected="opt.value === modelValue"
+          @mouseenter="activeIndex = index"
+          @focus="activeIndex = index"
+          @keydown="onOptionKey($event, index, opt)"
           @click="choose(opt)"
         >
           <span class="sm-label">{{ opt.label }}</span>
@@ -179,11 +241,13 @@ onBeforeUnmount(() => {
   background: transparent;
   border: none;
   border-radius: 8px;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, transform 0.18s ease;
 }
 
-.sm-opt:hover {
+.sm-opt:hover,
+.sm-opt.focused {
   background: rgba(37, 99, 235, 0.08);
+  transform: translateX(2px);
 }
 
 .sm-opt.active {

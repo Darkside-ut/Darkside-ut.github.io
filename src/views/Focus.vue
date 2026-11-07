@@ -84,7 +84,8 @@ function toggleImmersive() {
 
 function onShortcut(event) {
   const tag = (event.target?.tagName || '').toLowerCase()
-  if (tag === 'input' || tag === 'textarea' || tag === 'select') return
+  const interactive = ['input', 'textarea', 'select', 'button', 'a'].includes(tag) || event.target?.isContentEditable
+  if (interactive && event.key !== 'Escape') return
   if (eyeResting.value > 0 && event.key !== 'Escape') return
 
   if (event.code === 'Space') {

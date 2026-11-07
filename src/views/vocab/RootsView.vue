@@ -133,7 +133,7 @@ function know() {
 function onKey(e) {
   if (detail.value || tab.value !== 'flash') return
   const tag = (e.target?.tagName || '').toLowerCase()
-  if (tag === 'input' || tag === 'textarea') return
+  if (['input', 'textarea', 'select', 'button', 'a'].includes(tag) || e.target?.isContentEditable) return
   if (e.code === 'Space') {
     e.preventDefault()
     flipped.value = !flipped.value

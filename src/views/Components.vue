@@ -1,5 +1,5 @@
 <script setup>
-import { Sunny, Calendar, Reading, Timer, Food } from '@element-plus/icons-vue'
+import { Sunny, Calendar, Reading, Timer, Food, Memo } from '@element-plus/icons-vue'
 
 // 组件列表：新增组件在这里登记即可，卡片会自动渲染
 const components = [
@@ -37,6 +37,13 @@ const components = [
     path: '/components/food',
     icon: Food,
     color: '#c05621',
+  },
+  {
+    name: '小便条',
+    desc: '收藏金句、诗词、歌词、游戏截图和生活片刻',
+    path: '/components/notes',
+    icon: Memo,
+    color: '#7c6bb3',
   },
 ]
 </script>
