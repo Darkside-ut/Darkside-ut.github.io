@@ -63,6 +63,10 @@ const expanded = ref(new Set())
 const draggingId = ref('')
 const dragOverId = ref('')
 
+function emptyPoem() {
+  return { title: '', content: '', source: '' }
+}
+
 function emptyForm(type = 'quote') {
   return {
     type,
@@ -72,9 +76,8 @@ function emptyForm(type = 'quote') {
     link: '',
     tagsText: '',
     color: COLORS[0],
-    image: '',
-    imageName: '',
-    imageAlt: '',
+    images: [],
+    poems: type === 'poem' ? [emptyPoem()] : [],
     pinned: false,
     favorite: false,
   }
@@ -95,7 +98,14 @@ const filteredNotes = computed(() => {
     if (activeType.value !== 'all' && note.type !== activeType.value) return false
     if (favoriteOnly.value && !note.favorite) return false
     if (!query) return true
-    return [note.title, note.content, note.source, ...(note.tags || [])]
+    return [
+      note.title,
+      note.content,
+      note.source,
+      ...(note.tags || []),
+      ...(note.poems || []).flatMap((poem) => [poem.title, poem.content, poem.source]),
+      ...(note.images || []).flatMap((image) => [image.name, image.alt]),
+    ]
       .join(' ')
       .toLowerCase()
       .includes(query)
@@ -118,7 +128,30 @@ const canReorder = computed(
 
 const formMeta = computed(() => typeMeta(form.type))
 const editorTitle = computed(() => (editingId.value ? '编辑小便条' : `新建${formMeta.value.label}`))
-const canSave = computed(() => !!(form.title.trim() || form.content.trim() || form.image))
+const hasPoemContent = computed(() =>
+  form.type === 'poem' && form.poems.some((poem) => poem.title.trim() || poem.content.trim() || poem.source.trim())
+)
+const canSave = computed(() =>
+  !!(form.title.trim() || form.content.trim() || form.images.length || hasPoemContent.value)
+)
+
+function selectType(type) {
+  form.type = type
+  if (type === 'poem' && !form.poems.length) form.poems.push(emptyPoem())
+}
+
+function noteImages(note) {
+  if (note.images?.length) return note.images
+  return note.image ? [{ data: note.image, name: note.imageName || '', alt: note.imageAlt || '' }] : []
+}
+
+function notePoems(note) {
+  if (note.poems?.length) return note.poems
+  if (note.type === 'poem' && (note.content || note.source)) {
+    return [{ title: '', content: note.content || '', source: note.source || '' }]
+  }
+  return []
+}
 
 function openCreate(type = activeType.value === 'all' ? 'quote' : activeType.value) {
   editingId.value = ''
@@ -128,17 +161,18 @@ function openCreate(type = activeType.value === 'all' ? 'quote' : activeType.val
 
 function openEdit(note) {
   editingId.value = note.id
+  const images = noteImages(note).map((image) => ({ ...image }))
+  const poems = notePoems(note).map((poem) => ({ ...poem }))
   Object.assign(form, {
     type: note.type,
     title: note.title,
-    content: note.content,
-    source: note.source,
+    content: note.type === 'poem' && !note.poems?.length ? '' : note.content,
+    source: note.type === 'poem' && !note.poems?.length ? '' : note.source,
     link: note.link || '',
     tagsText: (note.tags || []).join('，'),
     color: note.color,
-    image: note.image,
-    imageName: note.imageName || '',
-    imageAlt: note.imageAlt || '',
+    images,
+    poems: note.type === 'poem' ? (poems.length ? poems : [emptyPoem()]) : poems,
     pinned: note.pinned,
     favorite: note.favorite,
   })
@@ -159,6 +193,20 @@ async function submitNote() {
   if (!canSave.value || saving.value) return
   saving.value = true
   try {
+    const images = form.images.map((image) => ({
+      data: image.data,
+      name: image.name || '',
+      alt: image.alt?.trim() || '',
+    }))
+    const poems = form.type === 'poem'
+      ? form.poems
+          .map((poem) => ({
+            title: poem.title.trim(),
+            content: poem.content.trim(),
+            source: poem.source.trim(),
+          }))
+          .filter((poem) => poem.title || poem.content || poem.source)
+      : []
     await saveNote({
       id: editingId.value || undefined,
       type: form.type,
@@ -168,9 +216,11 @@ async function submitNote() {
       link: form.link,
       tags: parseTags(form.tagsText),
       color: form.color,
-      image: form.image,
-      imageName: form.imageName,
-      imageAlt: form.imageAlt,
+      images,
+      poems,
+      image: images[0]?.data || '',
+      imageName: images[0]?.name || '',
+      imageAlt: images[0]?.alt || '',
       pinned: form.pinned,
       favorite: form.favorite,
     })
@@ -228,7 +278,14 @@ function safeLink(value) {
 }
 
 async function copyNote(note) {
-  const text = [note.title, note.content, note.source ? `—— ${note.source}` : ''].filter(Boolean).join('\n')
+  const poemText = notePoems(note)
+    .map((poem) => [poem.title, poem.content, poem.source ? `—— ${poem.source}` : ''].filter(Boolean).join('\n'))
+    .join('\n\n')
+  const text = [
+    note.title,
+    note.type === 'poem' && poemText ? poemText : note.content,
+    note.type === 'poem' ? '' : note.source ? `—— ${note.source}` : '',
+  ].filter(Boolean).join('\n')
   try {
     await navigator.clipboard.writeText(text)
     ElMessage.success('已复制到剪贴板')
@@ -271,22 +328,39 @@ async function optimizeImage(file) {
   return canvas.toDataURL('image/webp', 0.86)
 }
 
-async function acceptImage(file) {
-  if (!file) return
+function validateImage(file) {
   if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type)) {
-    ElMessage.warning('支持 JPG、PNG、WebP 和 GIF 图片')
-    return
+    ElMessage.warning(`“${file.name}”不是支持的图片格式`)
+    return false
   }
   if (file.size > 15 * 1024 * 1024) {
-    ElMessage.warning('图片不能超过 15MB')
+    ElMessage.warning(`“${file.name}”超过 15MB`)
+    return false
+  }
+  return true
+}
+
+async function acceptImages(fileList) {
+  const files = [...(fileList || [])].filter(Boolean)
+  if (!files.length) return
+  const available = 12 - form.images.length
+  if (available <= 0) {
+    ElMessage.warning('一组最多保存 12 张图片')
     return
   }
+  const accepted = files.filter(validateImage).slice(0, available)
+  if (files.length > available) ElMessage.warning(`一组最多 12 张，本次添加前 ${available} 张`)
+  if (!accepted.length) return
 
   imageBusy.value = true
   try {
-    form.image = await optimizeImage(file)
-    form.imageName = file.name
-    if (!form.imageAlt) form.imageAlt = file.name.replace(/\.[^.]+$/, '')
+    for (const file of accepted) {
+      form.images.push({
+        data: await optimizeImage(file),
+        name: file.name,
+        alt: file.name.replace(/\.[^.]+$/, ''),
+      })
+    }
   } catch (error) {
     ElMessage.error(`图片处理失败：${error?.message || error}`)
   } finally {
@@ -295,26 +369,57 @@ async function acceptImage(file) {
 }
 
 async function onImageFile(event) {
-  await acceptImage(event.target.files?.[0])
+  await acceptImages(event.target.files)
   event.target.value = ''
 }
 
 async function onImageDrop(event) {
   imageDrag.value = false
-  await acceptImage(event.dataTransfer?.files?.[0])
+  await acceptImages(event.dataTransfer?.files)
 }
 
 async function onPaste(event) {
-  const item = [...(event.clipboardData?.items || [])].find((entry) => entry.type.startsWith('image/'))
-  if (!item) return
+  const files = [...(event.clipboardData?.items || [])]
+    .filter((entry) => entry.type.startsWith('image/'))
+    .map((entry) => entry.getAsFile())
+    .filter(Boolean)
+  if (!files.length) return
   event.preventDefault()
-  await acceptImage(item.getAsFile())
+  await acceptImages(files)
 }
 
-function removeImage() {
-  form.image = ''
-  form.imageName = ''
-  form.imageAlt = ''
+function removeImage(index) {
+  form.images.splice(index, 1)
+}
+
+function addPoem() {
+  if (form.poems.length >= 20) {
+    ElMessage.warning('一组最多收录 20 首诗')
+    return
+  }
+  form.poems.push(emptyPoem())
+}
+
+function removePoem(index) {
+  if (form.poems.length === 1) Object.assign(form.poems[0], emptyPoem())
+  else form.poems.splice(index, 1)
+}
+
+function showImage(note, index = 0) {
+  const images = noteImages(note)
+  if (!images.length) return
+  lightbox.value = { images, index, title: note.title }
+}
+
+const lightboxImage = computed(() => lightbox.value?.images?.[lightbox.value.index] || null)
+
+function stepLightbox(direction) {
+  if (!lightbox.value || lightbox.value.images.length < 2) return
+  const count = lightbox.value.images.length
+  lightbox.value = {
+    ...lightbox.value,
+    index: (lightbox.value.index + direction + count) % count,
+  }
 }
 
 function showRandom() {
@@ -336,7 +441,7 @@ function download(filename, content, type = 'application/json') {
 
 function exportAll() {
   const payload = {
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     notes: notes.value,
   }
@@ -394,6 +499,16 @@ function endDrag() {
 }
 
 function onKeydown(event) {
+  if (lightbox.value && event.key === 'ArrowLeft') {
+    event.preventDefault()
+    stepLightbox(-1)
+    return
+  }
+  if (lightbox.value && event.key === 'ArrowRight') {
+    event.preventDefault()
+    stepLightbox(1)
+    return
+  }
   if (event.key === 'Escape') {
     if (lightbox.value) lightbox.value = null
     else if (randomNote.value) randomNote.value = null
@@ -545,14 +660,54 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             </div>
           </div>
 
-          <button v-if="note.image" type="button" class="note-image" @click="lightbox = note">
-            <img :src="note.image" :alt="note.imageAlt || note.title || '便条图片'" />
-            <span><el-icon><Picture /></el-icon> 查看原图</span>
-          </button>
+          <div
+            v-if="noteImages(note).length"
+            class="note-gallery"
+            :class="`gallery-${Math.min(noteImages(note).length, 4)}`"
+          >
+            <button
+              v-for="(image, imageIndex) in noteImages(note).slice(0, 4)"
+              :key="`${image.name}-${imageIndex}`"
+              type="button"
+              class="note-image"
+              @click="showImage(note, imageIndex)"
+            >
+              <img :src="image.data" :alt="image.alt || note.title || `便条图片 ${imageIndex + 1}`" />
+              <span v-if="imageIndex === 3 && noteImages(note).length > 4" class="gallery-more">
+                +{{ noteImages(note).length - 4 }}
+              </span>
+              <span v-else class="image-zoom"><el-icon><Picture /></el-icon> 查看</span>
+            </button>
+          </div>
 
           <h3 v-if="note.title">{{ note.title }}</h3>
+
+          <div
+            v-if="note.type === 'poem' && notePoems(note).length"
+            class="poem-collection"
+            :class="{ expanded: expanded.has(note.id) }"
+          >
+            <section
+              v-for="(poem, poemIndex) in (expanded.has(note.id) ? notePoems(note) : notePoems(note).slice(0, 2))"
+              :key="poemIndex"
+              class="poem-piece"
+            >
+              <h4 v-if="poem.title">{{ poem.title }}</h4>
+              <p v-if="poem.content">{{ poem.content }}</p>
+              <cite v-if="poem.source">—— {{ poem.source }}</cite>
+            </section>
+            <button
+              v-if="notePoems(note).length > 2"
+              type="button"
+              class="collection-toggle"
+              @click="toggleExpanded(note.id)"
+            >
+              {{ expanded.has(note.id) ? '收起组诗' : `展开全部 ${notePoems(note).length} 首` }}
+            </button>
+          </div>
+
           <button
-            v-if="note.content"
+            v-else-if="note.content"
             type="button"
             class="note-content"
             :class="{ expanded: expanded.has(note.id) }"
@@ -561,8 +716,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             {{ note.content }}
           </button>
 
-          <div v-if="note.source || safeLink(note.link)" class="note-source">
-            <span v-if="note.source">—— {{ note.source }}</span>
+          <div v-if="(note.type !== 'poem' && note.source) || safeLink(note.link)" class="note-source">
+            <span v-if="note.type !== 'poem' && note.source">—— {{ note.source }}</span>
             <a v-if="safeLink(note.link)" :href="safeLink(note.link)" target="_blank" rel="noopener" @click.stop>
               打开链接 ↗
             </a>
@@ -615,7 +770,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
                     :key="type.value"
                     type="button"
                     :class="{ active: form.type === type.value }"
-                    @click="form.type = type.value"
+                    @click="selectType(type.value)"
                   >
                     <span>{{ type.emoji }}</span>
                     {{ type.label }}
@@ -625,11 +780,35 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
               </div>
 
               <label class="field-block">
-                <span class="field-label">标题 <small>可选</small></span>
-                <input v-model="form.title" maxlength="80" placeholder="给这张便条起个名字" />
+                <span class="field-label">{{ form.type === 'poem' ? '组诗标题' : '标题' }} <small>可选</small></span>
+                <input
+                  v-model="form.title"
+                  maxlength="80"
+                  :placeholder="form.type === 'poem' ? '例如：春日三章' : '给这张便条起个名字'"
+                />
               </label>
 
-              <label class="field-block">
+              <div v-if="form.type === 'poem'" class="field-block poem-editor-block">
+                <div class="collection-heading">
+                  <span class="field-label">组诗 <small>{{ form.poems.length }} / 20 首</small></span>
+                  <button type="button" class="add-piece-btn" @click="addPoem">
+                    <el-icon><Plus /></el-icon> 添加一首
+                  </button>
+                </div>
+                <div class="poem-editor-list">
+                  <section v-for="(poem, poemIndex) in form.poems" :key="poemIndex" class="poem-editor-item">
+                    <header>
+                      <strong>第 {{ poemIndex + 1 }} 首</strong>
+                      <button type="button" aria-label="移除这首诗" @click="removePoem(poemIndex)">×</button>
+                    </header>
+                    <input v-model="poem.title" maxlength="80" placeholder="小标题（可选）" />
+                    <textarea v-model="poem.content" rows="6" maxlength="5000" placeholder="写下这一首诗……"></textarea>
+                    <input v-model="poem.source" maxlength="100" placeholder="作者 / 出处（可选）" />
+                  </section>
+                </div>
+              </div>
+
+              <label v-else class="field-block">
                 <span class="field-label">正文</span>
                 <textarea
                   v-model="form.content"
@@ -640,8 +819,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
                 <span class="char-count">{{ form.content.length }} / 5000</span>
               </label>
 
-              <div class="field-row">
-                <label class="field-block">
+              <div class="field-row" :class="{ 'single-field': form.type === 'poem' }">
+                <label v-if="form.type !== 'poem'" class="field-block">
                   <span class="field-label">作者 / 出处</span>
                   <input v-model="form.source" maxlength="100" placeholder="例如：李白《将进酒》" />
                 </label>
@@ -657,35 +836,44 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
               </label>
 
               <div class="field-block">
-                <span class="field-label">图片 <small>可拖入、粘贴或选择文件</small></span>
+                <div class="collection-heading">
+                  <span class="field-label">图片 <small>{{ form.images.length }} / 12 张，可多选、拖入或粘贴</small></span>
+                  <button v-if="form.images.length" type="button" class="add-piece-btn" :disabled="imageBusy" @click="imageInput?.click()">
+                    <el-icon><Plus /></el-icon> 继续添加
+                  </button>
+                </div>
                 <div
                   class="image-drop"
-                  :class="{ over: imageDrag, filled: form.image }"
+                  :class="{ over: imageDrag, filled: form.images.length }"
                   @dragenter.prevent="imageDrag = true"
                   @dragover.prevent
                   @dragleave.prevent="imageDrag = false"
                   @drop.prevent="onImageDrop"
                 >
-                  <template v-if="form.image">
-                    <img :src="form.image" :alt="form.imageAlt || '图片预览'" />
-                    <div class="image-overlay">
-                      <button type="button" @click="imageInput?.click()">更换图片</button>
-                      <button type="button" class="danger" @click="removeImage">移除</button>
-                    </div>
-                  </template>
+                  <div v-if="form.images.length" class="image-editor-grid">
+                    <figure v-for="(image, imageIndex) in form.images" :key="`${image.name}-${imageIndex}`">
+                      <img :src="image.data" :alt="image.alt || `图片 ${imageIndex + 1}`" />
+                      <span>{{ imageIndex + 1 }}</span>
+                      <button type="button" aria-label="移除图片" @click="removeImage(imageIndex)">×</button>
+                      <input v-model="image.alt" maxlength="120" :placeholder="`第 ${imageIndex + 1} 张图片说明`" />
+                    </figure>
+                  </div>
                   <button v-else type="button" class="image-empty" :disabled="imageBusy" @click="imageInput?.click()">
                     <el-icon><Picture /></el-icon>
-                    <strong>{{ imageBusy ? '正在处理图片…' : '放入一张喜欢的画面' }}</strong>
-                    <span>JPG / PNG / WebP / GIF，最大 15MB</span>
+                    <strong>{{ imageBusy ? '正在处理图片…' : '放入一组喜欢的画面' }}</strong>
+                    <span>可一次选择多张；JPG / PNG / WebP / GIF，单张最大 15MB</span>
                   </button>
                 </div>
-                <input ref="imageInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden @change="onImageFile" />
+                <p v-if="imageBusy" class="image-processing">正在处理图片，请稍候……</p>
+                <input
+                  ref="imageInput"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  multiple
+                  hidden
+                  @change="onImageFile"
+                />
               </div>
-
-              <label v-if="form.image" class="field-block">
-                <span class="field-label">图片说明</span>
-                <input v-model="form.imageAlt" maxlength="120" placeholder="描述这张图，方便以后回忆" />
-              </label>
 
               <div class="appearance-row">
                 <div class="field-block compact">
@@ -728,15 +916,28 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           <article class="spotlight-card" :style="{ '--note-color': randomNote.color }">
             <button class="spotlight-close" aria-label="关闭" @click="randomNote = null">×</button>
             <span class="spotlight-type">{{ typeMeta(randomNote.type).emoji }} {{ typeMeta(randomNote.type).label }}</span>
-            <img
-              v-if="randomNote.image"
-              :src="randomNote.image"
-              :alt="randomNote.imageAlt || randomNote.title || '便条图片'"
-              @click="lightbox = randomNote"
-            />
+            <div v-if="noteImages(randomNote).length" class="spotlight-gallery">
+              <button
+                v-for="(image, imageIndex) in noteImages(randomNote)"
+                :key="imageIndex"
+                type="button"
+                @click="showImage(randomNote, imageIndex)"
+              >
+                <img :src="image.data" :alt="image.alt || randomNote.title || `便条图片 ${imageIndex + 1}`" />
+              </button>
+            </div>
             <h2 v-if="randomNote.title">{{ randomNote.title }}</h2>
-            <p v-if="randomNote.content">{{ randomNote.content }}</p>
-            <cite v-if="randomNote.source">—— {{ randomNote.source }}</cite>
+            <div v-if="randomNote.type === 'poem' && notePoems(randomNote).length" class="spotlight-poems">
+              <section v-for="(poem, poemIndex) in notePoems(randomNote)" :key="poemIndex">
+                <h3 v-if="poem.title">{{ poem.title }}</h3>
+                <p v-if="poem.content">{{ poem.content }}</p>
+                <cite v-if="poem.source">—— {{ poem.source }}</cite>
+              </section>
+            </div>
+            <template v-else>
+              <p v-if="randomNote.content">{{ randomNote.content }}</p>
+              <cite v-if="randomNote.source">—— {{ randomNote.source }}</cite>
+            </template>
             <div class="spotlight-actions">
               <button @click="showRandom"><el-icon><RefreshRight /></el-icon> 再翻一张</button>
               <button @click="openEdit(randomNote); randomNote = null"><el-icon><Edit /></el-icon> 编辑</button>
@@ -749,10 +950,29 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     <!-- 图片灯箱 -->
     <teleport to="body">
       <transition name="lightbox-fade">
-        <div v-if="lightbox" class="lightbox" @click="lightbox = null">
-          <button aria-label="关闭图片">×</button>
-          <img :src="lightbox.image" :alt="lightbox.imageAlt || lightbox.title || '便条图片'" />
-          <span>{{ lightbox.imageAlt || lightbox.title || lightbox.imageName }}</span>
+        <div v-if="lightbox && lightboxImage" class="lightbox" @click.self="lightbox = null">
+          <button class="lightbox-close" aria-label="关闭图片" @click="lightbox = null">×</button>
+          <button
+            v-if="lightbox.images.length > 1"
+            class="lightbox-nav prev"
+            aria-label="上一张图片"
+            @click="stepLightbox(-1)"
+          >
+            ‹
+          </button>
+          <img :src="lightboxImage.data" :alt="lightboxImage.alt || lightbox.title || '便条图片'" />
+          <button
+            v-if="lightbox.images.length > 1"
+            class="lightbox-nav next"
+            aria-label="下一张图片"
+            @click="stepLightbox(1)"
+          >
+            ›
+          </button>
+          <span>
+            <b v-if="lightbox.images.length > 1">{{ lightbox.index + 1 }} / {{ lightbox.images.length }}</b>
+            {{ lightboxImage.alt || lightbox.title || lightboxImage.name }}
+          </span>
         </div>
       </transition>
     </teleport>
@@ -1073,37 +1293,56 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 .fav-signal { color: #d59b13; }
 .drag-handle { opacity: 0.45; }
 
+.note-gallery {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 105px;
+  gap: 4px;
+  overflow: hidden;
+  margin: 0.7rem 0 0.75rem;
+  border-radius: 13px;
+  background: #dce7f5;
+}
+
+.note-gallery.gallery-1 {
+  grid-template-columns: 1fr;
+  grid-auto-rows: minmax(170px, 270px);
+}
+
+.note-gallery.gallery-2 { grid-auto-rows: 180px; }
+.note-gallery.gallery-3 .note-image:first-child { grid-row: span 2; }
+
 .note-image {
   position: relative;
   width: 100%;
-  max-height: 270px;
+  height: 100%;
+  min-height: 0;
   display: block;
   overflow: hidden;
-  margin: 0.7rem 0 0.75rem;
   padding: 0;
   background: #dce7f5;
   border: none;
-  border-radius: 13px;
 }
 
 .note-image img {
   width: 100%;
-  max-height: 270px;
+  height: 100%;
   display: block;
   object-fit: cover;
   transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.note-image span {
+.note-image .image-zoom,
+.note-image .gallery-more {
   position: absolute;
-  right: 0.55rem;
-  bottom: 0.5rem;
+  right: 0.45rem;
+  bottom: 0.4rem;
   display: inline-flex;
   align-items: center;
   gap: 3px;
   padding: 0.22rem 0.45rem;
   color: #fff;
-  background: rgba(15, 23, 42, 0.58);
+  background: rgba(15, 23, 42, 0.62);
   border-radius: 8px;
   font-size: 0.58rem;
   opacity: 0;
@@ -1111,8 +1350,46 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   transition: 0.25s ease;
 }
 
-.note-image:hover img { transform: scale(1.035); }
-.note-image:hover span { opacity: 1; transform: translateY(0); }
+.note-image .gallery-more {
+  inset: 0;
+  justify-content: center;
+  border-radius: 0;
+  font-size: 1.1rem;
+  opacity: 1;
+  transform: none;
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.note-image:hover img { transform: scale(1.045); }
+.note-image:hover .image-zoom { opacity: 1; transform: translateY(0); }
+
+.poem-collection {
+  position: relative;
+  margin-top: 0.45rem;
+}
+
+.poem-piece {
+  padding: 0.55rem 0;
+  border-top: 1px dashed color-mix(in srgb, var(--note-color) 18%, transparent);
+}
+
+.poem-piece:first-child { border-top: 0; }
+.poem-piece h4 { margin: 0 0 0.3rem; color: var(--note-color); font-size: 0.76rem; }
+.poem-piece p { margin: 0; white-space: pre-wrap; color: var(--text-dark); font-size: 0.79rem; line-height: 1.86; }
+.poem-piece cite { display: block; margin-top: 0.32rem; color: #7d8ca5; text-align: right; font-size: 0.64rem; font-style: normal; }
+
+.collection-toggle {
+  position: sticky;
+  bottom: 0;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.45rem;
+  color: var(--note-color);
+  background: color-mix(in srgb, var(--note-color) 8%, rgba(255,255,255,.92));
+  border: 0;
+  border-radius: 9px;
+  font-size: 0.64rem;
+}
 
 .note-card h3 {
   margin: 0.65rem 0 0.45rem;
@@ -1419,6 +1696,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   gap: 0.7rem;
 }
 
+.field-row.single-field { grid-template-columns: 1fr; }
+
 .editor-types {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -1447,11 +1726,68 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   border-color: var(--accent);
 }
 
+.collection-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.add-piece-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0.3rem 0.55rem;
+  color: var(--accent);
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  border-radius: 8px;
+  font-size: 0.63rem;
+}
+
+.add-piece-btn:disabled { opacity: 0.45; }
+
+.poem-editor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.poem-editor-item {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.75rem;
+  background: color-mix(in srgb, var(--accent) 4%, rgba(255,255,255,.82));
+  border: 1px solid rgba(37, 99, 235, 0.13);
+  border-radius: 12px;
+}
+
+.poem-editor-item header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--accent);
+  font-size: 0.66rem;
+}
+
+.poem-editor-item header button {
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  color: #d45a5a;
+  background: rgba(220, 76, 76, 0.07);
+  border: 0;
+  border-radius: 50%;
+  font-size: 1rem;
+}
+
+.poem-editor-item textarea { min-height: 120px; }
+
 .image-drop {
   min-height: 145px;
   display: grid;
   place-items: center;
-  overflow: hidden;
+  padding: 0.45rem;
   background: rgba(219, 234, 254, 0.3);
   border: 1.5px dashed rgba(37, 99, 235, 0.28);
   border-radius: 14px;
@@ -1464,8 +1800,66 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   transform: scale(1.01);
 }
 
-.image-drop.filled { position: relative; border-style: solid; }
-.image-drop > img { width: 100%; max-height: 270px; object-fit: contain; }
+.image-drop.filled { border-style: solid; }
+
+.image-editor-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.image-editor-grid figure {
+  position: relative;
+  min-width: 0;
+  margin: 0;
+  padding: 0.35rem;
+  background: rgba(255,255,255,.72);
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  border-radius: 10px;
+}
+
+.image-editor-grid img {
+  width: 100%;
+  height: 125px;
+  display: block;
+  object-fit: cover;
+  border-radius: 7px;
+}
+
+.image-editor-grid figure > span {
+  position: absolute;
+  top: 0.65rem;
+  left: 0.65rem;
+  min-width: 21px;
+  height: 21px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: rgba(15,23,42,.58);
+  border-radius: 7px;
+  font-size: 0.58rem;
+}
+
+.image-editor-grid figure > button {
+  position: absolute;
+  top: 0.58rem;
+  right: 0.58rem;
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  color: #fff;
+  background: rgba(190,50,50,.75);
+  border: 0;
+  border-radius: 50%;
+  font-size: 1rem;
+}
+
+.image-editor-grid input {
+  margin-top: 0.35rem;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.65rem;
+}
 
 .image-empty {
   display: flex;
@@ -1481,29 +1875,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 .image-empty .el-icon { font-size: 1.8rem; color: var(--accent); }
 .image-empty strong { color: var(--text-dark); font-size: 0.75rem; }
 .image-empty span { font-size: 0.62rem; }
-
-.image-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  background: rgba(15, 23, 42, 0.48);
-  opacity: 0;
-  transition: opacity 0.22s ease;
-}
-
-.image-drop:hover .image-overlay { opacity: 1; }
-.image-overlay button {
-  padding: 0.4rem 0.65rem;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.14);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 8px;
-  font-size: 0.68rem;
-}
-.image-overlay button.danger { background: rgba(220, 76, 76, 0.5); }
+.image-processing { margin: 0; color: #8392aa; font-size: 0.62rem; }
 
 .appearance-row {
   display: flex;
@@ -1578,10 +1950,18 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 .spotlight-close { position: absolute; top: 0.8rem; right: 0.8rem; }
 .spotlight-type { color: var(--note-color); font-size: 0.68rem; font-weight: 700; }
-.spotlight-card img { width: 100%; max-height: 420px; object-fit: contain; margin: 1rem 0; border-radius: 15px; cursor: zoom-in; }
+.spotlight-gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.45rem; margin: 1rem 0; }
+.spotlight-gallery button { min-width: 0; padding: 0; background: transparent; border: 0; }
+.spotlight-gallery button:only-child { grid-column: 1 / -1; }
+.spotlight-gallery img { width: 100%; height: 180px; display: block; object-fit: cover; margin: 0; border-radius: 15px; cursor: zoom-in; }
+.spotlight-gallery button:only-child img { height: auto; max-height: 420px; object-fit: contain; }
 .spotlight-card h2 { margin: 1rem 0 0.6rem; font-size: 1.35rem; }
 .spotlight-card p { white-space: pre-wrap; font-size: 0.9rem; line-height: 1.9; }
 .spotlight-card cite { display: block; margin-top: 0.8rem; text-align: right; color: var(--text-dim); font-size: 0.74rem; font-style: normal; }
+.spotlight-poems { display: grid; gap: 0.85rem; }
+.spotlight-poems section { padding: 0.75rem 0; border-top: 1px dashed color-mix(in srgb, var(--note-color) 22%, transparent); }
+.spotlight-poems h3 { margin: 0 0 0.4rem; color: var(--note-color); font-size: 0.88rem; }
+.spotlight-poems p { margin: 0; }
 .spotlight-actions { justify-content: center; margin-top: 1.3rem; }
 .spotlight-actions button { display: inline-flex; align-items: center; gap: 4px; padding: 0.45rem 0.8rem; color: var(--note-color); background: rgba(255,255,255,.65); border: 1px solid color-mix(in srgb, var(--note-color) 24%, transparent); border-radius: 10px; }
 
@@ -1610,8 +1990,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   cursor: zoom-out;
 }
 .lightbox img { max-width: 94vw; max-height: 84vh; object-fit: contain; border-radius: 10px; box-shadow: 0 25px 60px rgba(0,0,0,.45); }
-.lightbox span { color: rgba(255,255,255,.72); font-size: 0.7rem; }
-.lightbox button { position: absolute; top: 1.2rem; right: 1.5rem; width: 38px; height: 38px; color: #fff; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.25); border-radius: 50%; font-size: 1.3rem; }
+.lightbox > span { display: flex; align-items: center; gap: 0.55rem; color: rgba(255,255,255,.72); font-size: 0.7rem; }
+.lightbox > span b { color: #fff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.lightbox-close,
+.lightbox-nav { position: absolute; display: grid; place-items: center; padding: 0; color: #fff; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.25); border-radius: 50%; }
+.lightbox-close { top: 1.2rem; right: 1.5rem; width: 38px; height: 38px; font-size: 1.3rem; }
+.lightbox-nav { top: 50%; width: 46px; height: 46px; font-size: 2rem; transform: translateY(-50%); }
+.lightbox-nav.prev { left: 1.5rem; }
+.lightbox-nav.next { right: 1.5rem; }
 .lightbox-fade-enter-active,
 .lightbox-fade-leave-active { transition: opacity 0.25s ease; }
 .lightbox-fade-enter-from,
@@ -1633,6 +2019,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   .storage-tip { width: 100%; margin-left: 0; }
   .layout-board { grid-template-columns: 1fr; }
   .field-row { grid-template-columns: 1fr; }
+  .image-editor-grid { grid-template-columns: 1fr; }
+  .lightbox { padding-inline: 3.6rem; }
+  .lightbox-nav.prev { left: 0.65rem; }
+  .lightbox-nav.next { right: 0.65rem; }
   .drawer-foot > span { display: none; }
   .drawer-foot { justify-content: flex-end; }
   .card-actions { opacity: 1; transform: none; }

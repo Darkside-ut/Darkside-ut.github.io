@@ -52,6 +52,27 @@ function transactionDone(transaction) {
 }
 
 function normalize(note) {
+  const legacyImage = note.image
+    ? [{ data: note.image, name: note.imageName || '', alt: String(note.imageAlt || '').trim() }]
+    : []
+  const images = (Array.isArray(note.images) && note.images.length ? note.images : legacyImage)
+    .map((image) => ({
+      data: image?.data || image?.src || '',
+      name: String(image?.name || '').trim(),
+      alt: String(image?.alt || '').trim(),
+    }))
+    .filter((image) => image.data)
+    .slice(0, 12)
+  const poems = (Array.isArray(note.poems) ? note.poems : [])
+    .map((poem) => ({
+      title: String(poem?.title || '').trim(),
+      content: String(poem?.content || '').trim(),
+      source: String(poem?.source || '').trim(),
+    }))
+    .filter((poem) => poem.title || poem.content || poem.source)
+    .slice(0, 20)
+  const firstImage = images[0]
+
   return {
     id: note.id || uid(),
     type: note.type || 'quote',
@@ -61,9 +82,12 @@ function normalize(note) {
     link: String(note.link || '').trim(),
     tags: Array.isArray(note.tags) ? note.tags.map((tag) => String(tag).trim()).filter(Boolean).slice(0, 12) : [],
     color: note.color || '#4f7fd8',
-    image: note.image || '',
-    imageName: note.imageName || '',
-    imageAlt: String(note.imageAlt || '').trim(),
+    images,
+    poems,
+    // 保留首图字段，让旧版导出文件和已有读取逻辑仍可使用。
+    image: firstImage?.data || '',
+    imageName: firstImage?.name || '',
+    imageAlt: firstImage?.alt || '',
     pinned: !!note.pinned,
     favorite: !!note.favorite,
     position: Number.isFinite(Number(note.position)) ? Number(note.position) : Date.now(),
@@ -177,6 +201,6 @@ export async function importNotes(list, { replace = false } = {}) {
 export const noteStats = computed(() => ({
   total: notes.value.length,
   favorite: notes.value.filter((note) => note.favorite).length,
-  image: notes.value.filter((note) => note.image).length,
+  image: notes.value.reduce((total, note) => total + (note.images?.length || (note.image ? 1 : 0)), 0),
   pinned: notes.value.filter((note) => note.pinned).length,
 }))
