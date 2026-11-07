@@ -1,6 +1,9 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import {
+  ArrowLeft,
+  ArrowRight,
+  Close,
   CopyDocument,
   Delete,
   Download,
@@ -59,6 +62,8 @@ const imageBusy = ref(false)
 const imageDrag = ref(false)
 const randomNote = ref(null)
 const lightbox = ref(null)
+const lightboxDirection = ref(1)
+const lightboxDrag = reactive({ active: false, startX: 0, deltaX: 0 })
 const expanded = ref(new Set())
 const draggingId = ref('')
 const dragOverId = ref('')
@@ -87,6 +92,23 @@ const form = reactive(emptyForm())
 
 const typeMap = Object.fromEntries(NOTE_TYPES.map((type) => [type.value, type]))
 const typeMeta = (type) => typeMap[type] || NOTE_TYPES[0]
+
+function cardScatter(note, index) {
+  const seed = [...String(note.id || index)].reduce(
+    (value, character) => (value * 31 + character.charCodeAt(0)) >>> 0,
+    2166136261
+  )
+  const rotate = ((seed % 45) - 22) / 10
+  const x = ((Math.floor(seed / 47) % 19) - 9) * 0.8
+  const y = ((Math.floor(seed / 893) % 19) - 7) * 0.85
+
+  return {
+    '--note-rotate': `${rotate}deg`,
+    '--note-x': `${x}px`,
+    '--note-y': `${y}px`,
+    '--note-z': String((seed % 5) + 1),
+  }
+}
 
 const typeCounts = computed(() =>
   Object.fromEntries(NOTE_TYPES.map((type) => [type.value, notes.value.filter((note) => note.type === type.value).length]))
@@ -405,21 +427,67 @@ function removePoem(index) {
   else form.poems.splice(index, 1)
 }
 
+function resetLightboxDrag() {
+  lightboxDrag.active = false
+  lightboxDrag.startX = 0
+  lightboxDrag.deltaX = 0
+}
+
 function showImage(note, index = 0) {
   const images = noteImages(note)
   if (!images.length) return
+  lightboxDirection.value = 1
+  resetLightboxDrag()
   lightbox.value = { images, index, title: note.title }
 }
 
 const lightboxImage = computed(() => lightbox.value?.images?.[lightbox.value.index] || null)
+const lightboxTransition = computed(() =>
+  lightboxDirection.value > 0 ? 'lightbox-slide-next' : 'lightbox-slide-prev'
+)
+
+function goToLightbox(index) {
+  if (!lightbox.value || index === lightbox.value.index) return
+  lightboxDirection.value = index > lightbox.value.index ? 1 : -1
+  resetLightboxDrag()
+  lightbox.value = { ...lightbox.value, index }
+}
 
 function stepLightbox(direction) {
   if (!lightbox.value || lightbox.value.images.length < 2) return
   const count = lightbox.value.images.length
+  lightboxDirection.value = direction
+  resetLightboxDrag()
   lightbox.value = {
     ...lightbox.value,
     index: (lightbox.value.index + direction + count) % count,
   }
+}
+
+function onLightboxPointerDown(event) {
+  if (!lightbox.value || lightbox.value.images.length < 2 || event.button !== 0) return
+  lightboxDrag.active = true
+  lightboxDrag.startX = event.clientX
+  lightboxDrag.deltaX = 0
+  event.currentTarget.setPointerCapture?.(event.pointerId)
+}
+
+function onLightboxPointerMove(event) {
+  if (!lightboxDrag.active) return
+  lightboxDrag.deltaX = Math.max(-180, Math.min(180, event.clientX - lightboxDrag.startX))
+}
+
+function onLightboxPointerEnd(event) {
+  if (!lightboxDrag.active) return
+  event.currentTarget.releasePointerCapture?.(event.pointerId)
+  const delta = lightboxDrag.deltaX
+  if (Math.abs(delta) >= 55) stepLightbox(delta < 0 ? 1 : -1)
+  else resetLightboxDrag()
+}
+
+function closeLightbox() {
+  resetLightboxDrag()
+  lightbox.value = null
 }
 
 function showRandom() {
@@ -470,6 +538,7 @@ function onDragStart(event, note) {
     return
   }
   draggingId.value = note.id
+  document.documentElement.classList.add('note-dragging')
   event.dataTransfer.effectAllowed = 'move'
   event.dataTransfer.setData('text/plain', note.id)
 }
@@ -481,8 +550,7 @@ function onDragEnter(note) {
 async function onCardDrop(event, target) {
   event.preventDefault()
   const sourceId = draggingId.value || event.dataTransfer.getData('text/plain')
-  draggingId.value = ''
-  dragOverId.value = ''
+  endDrag()
   if (!sourceId || sourceId === target.id || !canReorder.value) return
 
   const ids = filteredNotes.value.map((note) => note.id)
@@ -496,6 +564,7 @@ async function onCardDrop(event, target) {
 function endDrag() {
   draggingId.value = ''
   dragOverId.value = ''
+  document.documentElement.classList.remove('note-dragging')
 }
 
 function onKeydown(event) {
@@ -510,7 +579,7 @@ function onKeydown(event) {
     return
   }
   if (event.key === 'Escape') {
-    if (lightbox.value) lightbox.value = null
+    if (lightbox.value) closeLightbox()
     else if (randomNote.value) randomNote.value = null
     else if (editorOpen.value) closeEditor()
   }
@@ -525,7 +594,10 @@ onMounted(() => {
   initNotes().catch(() => {})
 })
 
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
+  document.documentElement.classList.remove('note-dragging')
+})
 </script>
 
 <template>
@@ -642,7 +714,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             dragging: draggingId === note.id,
             'drag-over': dragOverId === note.id,
           }"
-          :style="{ '--note-color': note.color, '--note-index': index % 12 }"
+          :style="{
+            '--note-color': note.color,
+            '--note-index': index % 12,
+            ...cardScatter(note, index),
+          }"
           :draggable="canReorder"
           @dragstart="onDragStart($event, note)"
           @dragenter.prevent="onDragEnter(note)"
@@ -950,29 +1026,83 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     <!-- 图片灯箱 -->
     <teleport to="body">
       <transition name="lightbox-fade">
-        <div v-if="lightbox && lightboxImage" class="lightbox" @click.self="lightbox = null">
-          <button class="lightbox-close" aria-label="关闭图片" @click="lightbox = null">×</button>
+        <div v-if="lightbox && lightboxImage" class="lightbox" @click.self="closeLightbox">
+          <div
+            class="lightbox-ambient"
+            :style="{ backgroundImage: `url(${lightboxImage.data})` }"
+            aria-hidden="true"
+          ></div>
+          <div class="lightbox-grain" aria-hidden="true"></div>
+
+          <header class="lightbox-topbar">
+            <div>
+              <span v-if="lightbox.images.length > 1" class="lightbox-counter">
+                {{ String(lightbox.index + 1).padStart(2, '0') }}
+                <i></i>
+                {{ String(lightbox.images.length).padStart(2, '0') }}
+              </span>
+              <strong>{{ lightbox.title || '图片便条' }}</strong>
+            </div>
+            <button class="lightbox-close" aria-label="关闭图片" @click="closeLightbox">
+              <el-icon><Close /></el-icon>
+            </button>
+          </header>
+
           <button
             v-if="lightbox.images.length > 1"
             class="lightbox-nav prev"
             aria-label="上一张图片"
             @click="stepLightbox(-1)"
           >
-            ‹
+            <el-icon><ArrowLeft /></el-icon>
           </button>
-          <img :src="lightboxImage.data" :alt="lightboxImage.alt || lightbox.title || '便条图片'" />
+
+          <div
+            class="lightbox-stage"
+            :class="{ dragging: lightboxDrag.active, single: lightbox.images.length === 1 }"
+            :style="{
+              '--drag-x': `${lightboxDrag.deltaX}px`,
+              '--drag-rotate': `${lightboxDrag.deltaX / 90}deg`,
+            }"
+            @pointerdown="onLightboxPointerDown"
+            @pointermove="onLightboxPointerMove"
+            @pointerup="onLightboxPointerEnd"
+            @pointercancel="onLightboxPointerEnd"
+          >
+            <transition :name="lightboxTransition">
+              <img
+                :key="lightbox.index"
+                :src="lightboxImage.data"
+                :alt="lightboxImage.alt || lightbox.title || '便条图片'"
+              />
+            </transition>
+          </div>
+
           <button
             v-if="lightbox.images.length > 1"
             class="lightbox-nav next"
             aria-label="下一张图片"
             @click="stepLightbox(1)"
           >
-            ›
+            <el-icon><ArrowRight /></el-icon>
           </button>
-          <span>
-            <b v-if="lightbox.images.length > 1">{{ lightbox.index + 1 }} / {{ lightbox.images.length }}</b>
-            {{ lightboxImage.alt || lightbox.title || lightboxImage.name }}
-          </span>
+
+          <footer class="lightbox-footer">
+            <p>{{ lightboxImage.alt || lightboxImage.name || `第 ${lightbox.index + 1} 张图片` }}</p>
+            <div v-if="lightbox.images.length > 1" class="lightbox-thumbs" aria-label="图片缩略图">
+              <button
+                v-for="(image, imageIndex) in lightbox.images"
+                :key="imageIndex"
+                type="button"
+                :class="{ active: imageIndex === lightbox.index }"
+                :aria-label="`查看第 ${imageIndex + 1} 张图片`"
+                @click="goToLightbox(imageIndex)"
+              >
+                <img :src="image.data" :alt="image.alt || `图片 ${imageIndex + 1}`" />
+              </button>
+            </div>
+            <small>拖动或使用 ← → 切换 · Esc 关闭</small>
+          </footer>
         </div>
       </transition>
     </teleport>
@@ -1216,6 +1346,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 .layout-board {
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   align-items: start;
+  gap: 0.65rem 0.8rem;
+  padding: 0.55rem 0.5rem 1rem;
 }
 
 .layout-list { grid-template-columns: 1fr; }
@@ -1230,14 +1362,28 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   border: 1px solid color-mix(in srgb, var(--note-color) 24%, transparent);
   border-radius: 18px;
   box-shadow: 0 9px 24px -22px color-mix(in srgb, var(--note-color) 60%, #1e3a5f);
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease, box-shadow 0.3s ease, opacity 0.25s ease;
-  animation: note-rise 0.45s calc(var(--note-index) * 35ms) cubic-bezier(0.16, 1, 0.3, 1) both;
+  transition: transform 0.34s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease, box-shadow 0.3s ease, opacity 0.25s ease;
+  animation: note-rise 0.45s calc(var(--note-index) * 35ms) cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
-.note-card:hover {
+.layout-board .note-card {
+  z-index: var(--note-z);
+  transform: translate3d(var(--note-x), var(--note-y), 0) rotate(var(--note-rotate));
+  animation-name: note-scatter-rise;
+}
+
+.layout-list .note-card:hover {
   transform: translateY(-4px);
   border-color: color-mix(in srgb, var(--note-color) 46%, transparent);
   box-shadow: 0 18px 34px -25px color-mix(in srgb, var(--note-color) 72%, #1e3a5f);
+}
+
+.layout-board .note-card:hover,
+.layout-board .note-card:focus-within {
+  z-index: 20;
+  transform: translate3d(var(--note-x), calc(var(--note-y) - 7px), 0) rotate(0deg) scale(1.018);
+  border-color: color-mix(in srgb, var(--note-color) 48%, transparent);
+  box-shadow: 0 24px 42px -25px color-mix(in srgb, var(--note-color) 75%, #172a47);
 }
 
 .note-card.pinned {
@@ -1254,8 +1400,48 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   box-shadow: 0 0 0 2px var(--note-color), 0 18px 34px -24px var(--note-color);
 }
 
-.reorderable .note-card { cursor: grab; }
-.reorderable .note-card:active { cursor: grabbing; }
+.layout-board .note-card.dragging {
+  z-index: 30;
+  transform: scale(0.96) rotate(0deg);
+}
+
+.layout-board .note-card.drag-over {
+  z-index: 25;
+  transform: translate3d(var(--note-x), calc(var(--note-y) - 5px), 0) rotate(0deg) scale(1.015);
+}
+
+.layout-board .note-card:nth-child(4n + 1)::before,
+.layout-board .note-card:nth-child(7n + 3)::before {
+  content: '';
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  z-index: 2;
+  width: 42px;
+  height: 11px;
+  pointer-events: none;
+  background: rgba(255, 239, 180, 0.48);
+  border: 1px solid rgba(187, 153, 64, 0.12);
+  box-shadow: 0 2px 5px rgba(77, 64, 30, 0.08);
+  transform: translateX(-50%) rotate(-2deg);
+}
+
+.layout-board .note-card:nth-child(7n + 3)::before {
+  left: auto;
+  right: 18px;
+  width: 34px;
+  background: rgba(190, 222, 239, 0.45);
+  transform: rotate(4deg);
+}
+
+.reorderable .note-card { cursor: url('/cursor/pointer.cur'), grab; }
+.reorderable .note-card:active,
+.reorderable .note-card.dragging { cursor: url('/cursor/move.cur'), grabbing; }
+
+:global(html.note-dragging),
+:global(html.note-dragging *) {
+  cursor: url('/cursor/move.cur'), grabbing !important;
+}
 
 .card-accent {
   position: absolute;
@@ -1979,33 +2165,287 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   position: fixed;
   inset: 0;
   z-index: 1100;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: center;
+  justify-items: center;
   gap: 0.8rem;
-  padding: 2rem;
-  background: rgba(4, 12, 27, 0.9);
-  backdrop-filter: blur(8px);
-  cursor: zoom-out;
+  overflow: hidden;
+  padding: 1.2rem clamp(4.5rem, 8vw, 7rem) 1rem;
+  background: rgba(3, 9, 22, 0.88);
+  isolation: isolate;
 }
-.lightbox img { max-width: 94vw; max-height: 84vh; object-fit: contain; border-radius: 10px; box-shadow: 0 25px 60px rgba(0,0,0,.45); }
-.lightbox > span { display: flex; align-items: center; gap: 0.55rem; color: rgba(255,255,255,.72); font-size: 0.7rem; }
-.lightbox > span b { color: #fff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+.lightbox-ambient {
+  position: absolute;
+  inset: -12%;
+  z-index: -3;
+  background-position: center;
+  background-size: cover;
+  filter: blur(72px) saturate(1.25);
+  opacity: 0.24;
+  transform: scale(1.12);
+  transition: background-image 0.45s ease, opacity 0.45s ease;
+  animation: ambient-breathe 8s ease-in-out infinite alternate;
+}
+
+.lightbox::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(circle at 50% 45%, transparent 0, rgba(2, 8, 20, 0.2) 48%, rgba(2, 7, 18, 0.76) 100%),
+    linear-gradient(180deg, rgba(4, 12, 28, 0.35), rgba(3, 9, 22, 0.72));
+  backdrop-filter: blur(16px);
+}
+
+.lightbox-grain {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.12;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E");
+}
+
+.lightbox-topbar {
+  width: min(1120px, 100%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  color: #fff;
+}
+
+.lightbox-topbar > div {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.lightbox-topbar strong {
+  overflow: hidden;
+  color: rgba(255,255,255,.9);
+  font-size: 0.76rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lightbox-counter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: rgba(255,255,255,.66);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+}
+
+.lightbox-counter i {
+  width: 24px;
+  height: 1px;
+  background: rgba(255,255,255,.34);
+}
+
 .lightbox-close,
-.lightbox-nav { position: absolute; display: grid; place-items: center; padding: 0; color: #fff; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.25); border-radius: 50%; }
-.lightbox-close { top: 1.2rem; right: 1.5rem; width: 38px; height: 38px; font-size: 1.3rem; }
-.lightbox-nav { top: 50%; width: 46px; height: 46px; font-size: 2rem; transform: translateY(-50%); }
-.lightbox-nav.prev { left: 1.5rem; }
-.lightbox-nav.next { right: 1.5rem; }
+.lightbox-nav {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: #fff;
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 50%;
+  box-shadow: 0 12px 28px -18px rgba(0,0,0,.8);
+  line-height: 0;
+  backdrop-filter: blur(12px);
+  transition: transform 0.25s cubic-bezier(.16,1,.3,1), background 0.25s ease, border-color 0.25s ease;
+}
+
+.lightbox-close {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  font-size: 1.25rem;
+}
+
+.lightbox-close:hover { transform: rotate(8deg) scale(1.08); background: rgba(255,255,255,.16); }
+
+.lightbox-nav {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  width: 48px;
+  height: 48px;
+  transform: translateY(-50%);
+}
+
+.lightbox-close .el-icon { width: 17px; height: 17px; font-size: 17px; }
+.lightbox-nav .el-icon { width: 22px; height: 22px; font-size: 22px; }
+.lightbox-close .el-icon,
+.lightbox-nav .el-icon { display: grid; place-items: center; margin: 0; }
+.lightbox-nav.prev { left: clamp(0.8rem, 2.5vw, 2.2rem); }
+.lightbox-nav.next { right: clamp(0.8rem, 2.5vw, 2.2rem); }
+.lightbox-nav:hover { background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.42); }
+.lightbox-nav.prev:hover { transform: translate(-4px, -50%) scale(1.06); }
+.lightbox-nav.next:hover { transform: translate(4px, -50%) scale(1.06); }
+
+.lightbox-stage {
+  position: relative;
+  width: min(1120px, 100%);
+  height: 100%;
+  min-height: 220px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  cursor: url('/cursor/ew-resize.cur'), grab;
+  outline: none;
+  perspective: 1200px;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.lightbox-stage::after {
+  content: '';
+  position: absolute;
+  inset: auto 12% 1% 12%;
+  height: 24px;
+  z-index: -1;
+  background: rgba(0,0,0,.46);
+  border-radius: 50%;
+  filter: blur(18px);
+}
+
+.lightbox-stage > img {
+  position: absolute;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 13px;
+  box-shadow: 0 32px 70px -30px rgba(0,0,0,.9), 0 0 0 1px rgba(255,255,255,.08);
+  transform-origin: center;
+  transition: transform 0.5s cubic-bezier(.16,1,.3,1), filter 0.35s ease;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.lightbox-stage.single { cursor: url('/cursor/default.cur'), default; }
+.lightbox-stage.dragging { cursor: url('/cursor/move.cur'), grabbing; }
+.lightbox-stage.dragging > img {
+  transform: translateX(var(--drag-x)) rotate(var(--drag-rotate)) scale(.985);
+  transition: none;
+}
+
+.lightbox-footer {
+  width: min(1120px, 100%);
+  min-height: 46px;
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto minmax(120px, 1fr);
+  align-items: center;
+  gap: 1rem;
+  color: rgba(255,255,255,.68);
+}
+
+.lightbox-footer p {
+  overflow: hidden;
+  margin: 0;
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lightbox-footer small {
+  justify-self: end;
+  color: rgba(255,255,255,.38);
+  font-size: 0.55rem;
+  white-space: nowrap;
+}
+
+.lightbox-thumbs {
+  max-width: min(52vw, 570px);
+  display: flex;
+  justify-content: center;
+  gap: 0.38rem;
+  overflow-x: auto;
+  padding: 0.28rem;
+  scrollbar-width: none;
+}
+
+.lightbox-thumbs::-webkit-scrollbar { display: none; }
+
+.lightbox-thumbs button {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  overflow: hidden;
+  padding: 2px;
+  background: rgba(255,255,255,.08);
+  border: 1px solid transparent;
+  border-radius: 9px;
+  opacity: 0.48;
+  transform: scale(.9);
+  transition: 0.28s cubic-bezier(.16,1,.3,1);
+}
+
+.lightbox-thumbs button:hover { opacity: .82; transform: scale(.98); }
+.lightbox-thumbs button.active {
+  border-color: rgba(255,255,255,.82);
+  opacity: 1;
+  transform: translateY(-2px) scale(1);
+  box-shadow: 0 8px 20px -10px rgba(0,0,0,.75);
+}
+
+.lightbox-thumbs img { width: 100%; height: 100%; display: block; object-fit: cover; border-radius: 6px; }
+
+.lightbox-slide-next-enter-active,
+.lightbox-slide-next-leave-active,
+.lightbox-slide-prev-enter-active,
+.lightbox-slide-prev-leave-active {
+  transition: opacity .38s ease, transform .48s cubic-bezier(.16,1,.3,1), filter .38s ease;
+}
+.lightbox-slide-next-enter-from { opacity: 0; filter: blur(8px); transform: translateX(70px) rotateY(-4deg) scale(.96); }
+.lightbox-slide-next-leave-to { opacity: 0; filter: blur(8px); transform: translateX(-70px) rotateY(4deg) scale(.96); }
+.lightbox-slide-prev-enter-from { opacity: 0; filter: blur(8px); transform: translateX(-70px) rotateY(4deg) scale(.96); }
+.lightbox-slide-prev-leave-to { opacity: 0; filter: blur(8px); transform: translateX(70px) rotateY(-4deg) scale(.96); }
+
 .lightbox-fade-enter-active,
-.lightbox-fade-leave-active { transition: opacity 0.25s ease; }
+.lightbox-fade-leave-active { transition: opacity 0.32s ease; }
+.lightbox-fade-enter-active .lightbox-stage,
+.lightbox-fade-leave-active .lightbox-stage,
+.lightbox-fade-enter-active .lightbox-topbar,
+.lightbox-fade-leave-active .lightbox-topbar,
+.lightbox-fade-enter-active .lightbox-footer,
+.lightbox-fade-leave-active .lightbox-footer { transition: transform .48s cubic-bezier(.16,1,.3,1), opacity .28s ease, filter .35s ease; }
 .lightbox-fade-enter-from,
 .lightbox-fade-leave-to { opacity: 0; }
+.lightbox-fade-enter-from .lightbox-stage,
+.lightbox-fade-leave-to .lightbox-stage { opacity: 0; filter: blur(10px); transform: translateY(18px) scale(.96); }
+.lightbox-fade-enter-from .lightbox-topbar,
+.lightbox-fade-enter-from .lightbox-footer { opacity: 0; transform: translateY(8px); }
+
+@keyframes ambient-breathe {
+  from { opacity: .19; transform: scale(1.1) translate3d(-1%, -1%, 0); }
+  to { opacity: .3; transform: scale(1.17) translate3d(1%, 1%, 0); }
+}
 
 @keyframes note-rise {
   from { opacity: 0; transform: translateY(12px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes note-scatter-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--note-x), calc(var(--note-y) + 18px), 0) rotate(var(--note-rotate)) scale(.95);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(var(--note-x), var(--note-y), 0) rotate(var(--note-rotate)) scale(1);
+  }
 }
 
 @keyframes note-loading { to { background-position: -220% 0; } }
@@ -2020,7 +2460,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   .layout-board { grid-template-columns: 1fr; }
   .field-row { grid-template-columns: 1fr; }
   .image-editor-grid { grid-template-columns: 1fr; }
-  .lightbox { padding-inline: 3.6rem; }
+  .lightbox { padding: 0.85rem 3.6rem 0.7rem; }
+  .lightbox-stage { min-height: 180px; border-radius: 12px; }
+  .lightbox-footer { grid-template-columns: 1fr; justify-items: center; gap: 0.35rem; }
+  .lightbox-footer p { max-width: 78vw; text-align: center; }
+  .lightbox-footer small { display: none; }
+  .lightbox-thumbs { max-width: 76vw; }
   .lightbox-nav.prev { left: 0.65rem; }
   .lightbox-nav.next { right: 0.65rem; }
   .drawer-foot > span { display: none; }
@@ -2044,5 +2489,22 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   .appearance-row { align-items: flex-start; }
   .field-block.compact { width: 100%; }
   .spotlight-card { padding: 1.35rem; }
+  .lightbox { padding-inline: 3rem; }
+  .lightbox-topbar > div { gap: 0.5rem; }
+  .lightbox-topbar strong { max-width: 45vw; }
+  .lightbox-nav { width: 40px; height: 40px; }
+  .lightbox-thumbs button { width: 36px; height: 36px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lightbox-ambient,
+  .lightbox-stage > img,
+  .lightbox-slide-next-enter-active,
+  .lightbox-slide-next-leave-active,
+  .lightbox-slide-prev-enter-active,
+  .lightbox-slide-prev-leave-active {
+    animation: none;
+    transition-duration: 0.01ms;
+  }
 }
 </style>
